@@ -1,9 +1,11 @@
 -- =============================================================================
 -- Migration: 003 — Unique index em instances(license_id, hostname)
 -- Necessário para o upsert em clients-register funcionar sem erro 42P10.
--- Index parcial: WHERE hostname IS NOT NULL porque NULLs não conflitam no
--- Postgres e o schema permite hostname NULL no primeiro register.
+-- Sem cláusula WHERE: o supabase-js exige constraint não-parcial para o
+-- ON CONFLICT funcionar. NULLs em hostname não conflitam entre si por
+-- padrão no Postgres, então múltiplas rows com hostname NULL continuam
+-- permitidas — comportamento equivalente ao parcial, sem o 42P10.
 -- =============================================================================
 
 CREATE UNIQUE INDEX IF NOT EXISTS instances_license_hostname_unique
-  ON instances(license_id, hostname) WHERE hostname IS NOT NULL;
+  ON instances(license_id, hostname);
