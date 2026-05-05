@@ -43,9 +43,11 @@ CREATE TABLE instances (
   created_at          timestamptz NOT NULL DEFAULT now()
 );
 
--- Unique por hostname para upsert no instance-register
+-- Unique por hostname para upsert no instance-register.
+-- Sem WHERE: supabase-js exige constraint não-parcial para ON CONFLICT.
+-- NULLs não conflitam entre si por padrão no Postgres.
 CREATE UNIQUE INDEX instances_hostname_unique
-  ON instances(hostname) WHERE hostname IS NOT NULL;
+  ON instances(hostname);
 
 ALTER TABLE instances ENABLE ROW LEVEL SECURITY;
 
