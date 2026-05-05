@@ -4,51 +4,45 @@
 
 -- ---------------------------------------------------------------------------
 -- Função: setar tenant_id no JWT (app_metadata) quando user é criado
--- Flow: signup → trigger → upsert tenant → tenants_users → set app_metadata
+-- Flow: signup → trigger → find-or-create tenant → tenants_users → set app_metadata
 --
 -- Como funciona:
 --   1. Usuário faz signup com email
 --   2. Este trigger dispara AFTER INSERT ON auth.users
---   3. Cria um tenant novo com email_dono = new.email
---   4. Cria a row em tenants_users (role = owner)
---   5. Seta app_metadata.tenant_id no auth.users via update
+--   3. Busca tenant existente pelo email_dono (fluxo Hotmart: tenant já foi
+--      criado pelo webhook de compra antes do signup do cliente)
+--   4. Se não existir, cria tenant novo (fluxo direto / self-service)
+--   5. Insere em tenants_users com ON CONFLICT DO NOTHING (idempotente)
+--   6. Seta app_metadata.tenant_id no auth.users via update
 --      (o JWT passa a conter tenant_id no campo app_metadata)
---
--- Para usuários adicionados a um tenant existente: o admin usa a API
--- para criar a row em tenants_users e atualizar app_metadata manualmente.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION handle_new_user_signup()
 RETURNS TRIGGER
 LANGUAGE plpgsql
-SECURITY DEFINER  -- roda como postgres, não como o user que faz signup
+SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
   v_tenant_id uuid;
-  v_nome      text;
+  v_nome text;
 BEGIN
-  -- Derivar nome do tenant do email (parte antes do @)
-  v_nome := split_part(NEW.email, '@', 1);
+  SELECT id INTO v_tenant_id
+  FROM public.tenants
+  WHERE email_dono = NEW.email
+  LIMIT 1;
 
-  -- Criar tenant
-  INSERT INTO public.tenants (nome, email_dono, plano, status, metadata)
-  VALUES (
-    v_nome,
-    NEW.email,
-    'starter',
-    'active',
-    jsonb_build_object(
-      'llm_budget_brl', 50,
-      'alert_wa_disconnect_minutes', 60
-    )
-  )
-  RETURNING id INTO v_tenant_id;
+  IF v_tenant_id IS NULL THEN
+    v_nome := split_part(NEW.email, '@', 1);
+    INSERT INTO public.tenants (nome, email_dono, plano, status, metadata)
+    VALUES (v_nome, NEW.email, 'starter', 'active',
+            jsonb_build_object('llm_budget_brl', 50, 'alert_wa_disconnect_minutes', 60))
+    RETURNING id INTO v_tenant_id;
+  END IF;
 
-  -- Associar user ao tenant como owner
   INSERT INTO public.tenants_users (user_id, tenant_id, role)
-  VALUES (NEW.id, v_tenant_id, 'owner');
+  VALUES (NEW.id, v_tenant_id, 'owner')
+  ON CONFLICT (user_id, tenant_id) DO NOTHING;
 
-  -- Setar custom claim no app_metadata para o JWT carregar tenant_id
   UPDATE auth.users
   SET raw_app_meta_data = COALESCE(raw_app_meta_data, '{}'::jsonb) ||
     jsonb_build_object('tenant_id', v_tenant_id::text)
