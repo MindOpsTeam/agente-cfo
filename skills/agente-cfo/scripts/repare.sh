@@ -3,9 +3,11 @@
 # Use quando wacli doctor reportar QR expirado ou desconexão.
 set -euo pipefail
 
-LOG_DIR="${CFO_LOG_DIR:-$HOME/.agente-cfo/logs}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./_shared.sh
+source "$SCRIPT_DIR/_shared.sh"
+
 LOG_FILE="$LOG_DIR/repare.log"
-mkdir -p "$LOG_DIR"
 
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -55,20 +57,12 @@ if wacli auth; then
     echo "✅ Pareamento concluído com sucesso!"
     echo ""
 
-    # Verificar conexão pós-pareamento
     sleep 3
     echo "Verificando conexão..."
     if wacli doctor 2>&1 | grep -qi "connected\|ok"; then
         echo "✅ WhatsApp conectado e operacional."
-
-        # Reportar sucesso ao painel
-        if [[ -n "${PANEL_WEBHOOK_URL:-}" ]]; then
-            curl -s --max-time 10 -X POST "$PANEL_WEBHOOK_URL" \
-                -H "Content-Type: application/json" \
-                -H "X-License: ${LICENSE_KEY:-}" \
-                -d "{\"event\":\"whatsapp_repaired\",\"tenant\":\"${TENANT_ID:-unknown}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-                > /dev/null 2>&1 || true
-        fi
+        _panel_event "whatsapp_reconnected" "info" \
+            "{\"detail\":\"re-pareamento manual concluído\"}"
     else
         echo "⚠️  Pareamento feito mas conexão instável. Aguarde 30 segundos e tente:"
         echo "  wacli doctor"
@@ -82,14 +76,8 @@ else
     echo ""
     echo "Tente executar este script novamente."
 
-    # Reportar falha ao painel
-    if [[ -n "${PANEL_WEBHOOK_URL:-}" ]]; then
-        curl -s --max-time 10 -X POST "$PANEL_WEBHOOK_URL" \
-            -H "Content-Type: application/json" \
-            -H "X-License: ${LICENSE_KEY:-}" \
-            -d "{\"event\":\"whatsapp_repair_failed\",\"tenant\":\"${TENANT_ID:-unknown}\",\"timestamp\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" \
-            > /dev/null 2>&1 || true
-    fi
+    _panel_event "whatsapp_disconnected" "error" \
+        "{\"detail\":\"re-pareamento falhou\"}"
 
     echo "=== repare.sh encerrado com falha ==="
     exit 1

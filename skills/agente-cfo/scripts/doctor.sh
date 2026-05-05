@@ -3,20 +3,18 @@
 # Saída: tabela ASCII de status. Exit 0 = tudo ok. Exit 1 = alguma falha.
 set -euo pipefail
 
-# ── Config ────────────────────────────────────────────────────────────────────
-LOG_DIR="${CFO_LOG_DIR:-$HOME/.agente-cfo/logs}"
-STATE_DIR="${CFO_STATE_DIR:-$HOME/.agente-cfo}"
-OMIE_SKILL_PATH="${OMIE_SKILL_PATH:-$HOME/.openclaw/workspace/skills/omie}"
-LOG_FILE="$LOG_DIR/doctor.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./_shared.sh
+source "$SCRIPT_DIR/_shared.sh"
 
-mkdir -p "$LOG_DIR" "$STATE_DIR"
+LOG_FILE="$LOG_DIR/doctor.log"
+OMIE_SCRIPT="$OMIE_SKILL_PATH/scripts/omie_client.py"
 
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== doctor.sh iniciado em $TIMESTAMP ==="
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-COL_W=42
 PASS="OK"
 FAIL="FALHA"
 WARN="AVISO"
@@ -42,7 +40,6 @@ if wacli_out=$(wacli doctor --json 2>/dev/null); then
         register "WhatsApp (wacli)" "$FAIL" "status: $wa_status — execute repare.sh"
     fi
 else
-    # wacli doctor sem --json pode retornar exit != 0 quando desconectado
     if wacli doctor 2>&1 | grep -qi "connected\|ok\|pareado\|logged"; then
         register "WhatsApp (wacli)" "$PASS" "conectado"
     else
@@ -55,11 +52,10 @@ echo "[2/4] Verificando Omie ERP..."
 if [[ -z "${OMIE_APP_KEY:-}" || -z "${OMIE_APP_SECRET:-}" ]]; then
     register "Omie ERP" "$FAIL" "OMIE_APP_KEY ou OMIE_APP_SECRET não definidos"
 else
-    omie_script="$OMIE_SKILL_PATH/scripts/omie_client.py"
-    if [[ ! -f "$omie_script" ]]; then
-        register "Omie ERP" "$FAIL" "omie_client.py não encontrado em $omie_script"
+    if [[ ! -f "$OMIE_SCRIPT" ]]; then
+        register "Omie ERP" "$FAIL" "omie_client.py não encontrado em $OMIE_SCRIPT"
     else
-        if timeout 15 python3 "$omie_script" resumo_financeiro > /dev/null 2>&1; then
+        if timeout 15 python3 "$OMIE_SCRIPT" resumo_financeiro > /dev/null 2>&1; then
             register "Omie ERP" "$PASS" "API acessível"
         else
             EXIT_CODE=$?
@@ -75,7 +71,6 @@ fi
 # ── 3. LICENSE_KEY presente ───────────────────────────────────────────────────
 echo "[3/4] Verificando licença..."
 if [[ -n "${LICENSE_KEY:-}" ]]; then
-    # Validação básica de formato (prefixo lk_)
     if [[ "$LICENSE_KEY" == lk_* ]]; then
         register "Licença (LICENSE_KEY)" "$PASS" "presente e formato válido"
     else
@@ -100,12 +95,12 @@ printf "│ %-48s │ %-8s │ %-44s │\n" "Componente" "Status" "Mensagem"
 echo "├──────────────────────────────────────────────────┼──────────┼──────────────────────────────────────────────┤"
 
 OVERALL=0
+declare -A COMPONENTS=()
+
 for i in "${!CHECK_NAMES[@]}"; do
     name="${CHECK_NAMES[$i]}"
     status="${CHECK_STATUS[$i]}"
     msg="${CHECK_MSGS[$i]}"
-
-    # Truncar strings longas para caber na tabela
     name_fmt="${name:0:48}"
     msg_fmt="${msg:0:44}"
 
@@ -119,6 +114,14 @@ for i in "${!CHECK_NAMES[@]}"; do
     fi
 
     printf "│ %-48s │ %s %-6s │ %-44s │\n" "$name_fmt" "$icon" "$status" "$msg_fmt"
+
+    # Mapear para chaves do payload do painel
+    case "$name" in
+        *WhatsApp*)  COMPONENTS["whatsapp"]="${status,,}" ;;
+        *Omie*)      COMPONENTS["omie"]="${status,,}" ;;
+        *Licença*)   COMPONENTS["license"]="${status,,}" ;;
+        *Webhook*)   COMPONENTS["webhook"]="${status,,}" ;;
+    esac
 done
 
 echo "└──────────────────────────────────────────────────┴──────────┴──────────────────────────────────────────────┘"
@@ -130,17 +133,18 @@ else
     echo "❌ Uma ou mais verificações falharam. Veja a tabela acima."
 fi
 
-# ── Reportar ao painel central (tolerante a falha) ────────────────────────────
-if [[ -n "${PANEL_WEBHOOK_URL:-}" ]]; then
-    STATUS_JSON=$(printf '{"event":"doctor","overall":"%s","tenant":"%s","timestamp":"%s"}' \
-        "$([ $OVERALL -eq 0 ] && echo 'ok' || echo 'fail')" \
-        "${TENANT_ID:-unknown}" \
-        "$TIMESTAMP")
-    curl -s --max-time 10 -X POST "$PANEL_WEBHOOK_URL" \
-        -H "Content-Type: application/json" \
-        -H "X-License: ${LICENSE_KEY:-}" \
-        -d "$STATUS_JSON" > /dev/null 2>&1 || true
-fi
+# ── Reportar ao painel central ────────────────────────────────────────────────
+OVERALL_STR=$([ $OVERALL -eq 0 ] && echo "ok" || echo "fail")
+SEVERITY=$([ $OVERALL -eq 0 ] && echo "info" || echo "critical")
+
+PAYLOAD=$(printf '{"overall":"%s","components":{"whatsapp":"%s","omie":"%s","license":"%s","webhook":"%s"}}' \
+    "$OVERALL_STR" \
+    "${COMPONENTS[whatsapp]:-unknown}" \
+    "${COMPONENTS[omie]:-unknown}" \
+    "${COMPONENTS[license]:-unknown}" \
+    "${COMPONENTS[webhook]:-unknown}")
+
+_panel_event "doctor" "$SEVERITY" "$PAYLOAD"
 
 echo "=== doctor.sh encerrado — exit $OVERALL ==="
 exit $OVERALL
