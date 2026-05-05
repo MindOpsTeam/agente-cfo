@@ -13,7 +13,7 @@ set -euo pipefail
 # Constantes
 # ─────────────────────────────────────────────────────────────────────────────
 PANEL_BASE_URL="${PANEL_BASE_URL:-https://odhcfrgydjluxunhvojp.supabase.co/functions/v1}"
-SKILL_REPO="${SKILL_REPO:-https://github.com/seuorg/agente-cfo.git}"
+SKILL_REPO="${SKILL_REPO:-https://github.com/MindOpsTeam/agente-cfo.git}"
 SKILL_DEST="${HOME}/.openclaw/workspace/skills/agente-cfo"
 ENV_FILE="${HOME}/.agente-cfo/.env"
 INSTANCE_ENV="${HOME}/.agente-cfo/instance.env"
