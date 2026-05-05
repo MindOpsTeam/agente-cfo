@@ -1,18 +1,17 @@
 /**
  * POST /heartbeat
- * Atualiza last_heartbeat e status da instância. Chamado a cada ~5 minutos
- * pelo cfo-reporter.sh ou por um cron separado no cliente.
+ * Atualiza last_heartbeat e status da instância.
  *
- * Auth: X-License header
+ * Auth: X-Panel-Token
  * Body: { instance_id, openclaw_version?, ingress_url? }
- * Retorna: 204 No Content em sucesso
+ * Retorna: 204 No Content
  */
 
 import {
   adminClient,
   corsHeaders,
   errorResponse,
-  validateLicense,
+  validatePanelToken,
 } from "../_shared/auth.ts";
 
 Deno.serve(async (req: Request) => {
@@ -24,13 +23,10 @@ Deno.serve(async (req: Request) => {
     return errorResponse("Method not allowed", 405);
   }
 
-  // ── Validar licença ─────────────────────────────────────────────────────
-  const license = await validateLicense(req);
-  if (!license) {
-    return errorResponse("License inválida", 401);
+  if (!validatePanelToken(req)) {
+    return errorResponse("Token inválido", 401);
   }
 
-  // ── Parsear body ────────────────────────────────────────────────────────
   let body: {
     instance_id?: string;
     openclaw_version?: string;
@@ -49,38 +45,21 @@ Deno.serve(async (req: Request) => {
 
   const supabase = adminClient();
 
-  // ── Verificar que instance_id pertence a este tenant ────────────────────
-  const { data: instance } = await supabase
-    .from("instances")
-    .select("id")
-    .eq("id", body.instance_id)
-    .eq("tenant_id", license.tenantId)
-    .maybeSingle();
-
-  if (!instance) {
-    return errorResponse("instance_id não encontrado ou não autorizado", 404);
-  }
-
-  // ── Atualizar heartbeat ─────────────────────────────────────────────────
   const updateData: Record<string, unknown> = {
     last_heartbeat: new Date().toISOString(),
     status: "online",
   };
 
-  if (body.openclaw_version) {
-    updateData.openclaw_version = body.openclaw_version;
-  }
-  if (body.ingress_url) {
-    updateData.ingress_url = body.ingress_url;
-  }
+  if (body.openclaw_version) updateData.openclaw_version = body.openclaw_version;
+  if (body.ingress_url)      updateData.ingress_url = body.ingress_url;
 
-  const { error: updateError } = await supabase
+  const { error } = await supabase
     .from("instances")
     .update(updateData)
     .eq("id", body.instance_id);
 
-  if (updateError) {
-    console.error("Heartbeat update error:", updateError);
+  if (error) {
+    console.error("Heartbeat update error:", error);
     return errorResponse("Erro ao atualizar heartbeat", 500);
   }
 

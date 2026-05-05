@@ -1,11 +1,9 @@
 /**
  * POST /event
- * Recebe eventos da skill agente-cfo e os persiste.
- * Para tipos específicos, cria registros derivados:
- *   - omie_error       → insere em omie_errors
- *   - wa_status_changed → insere em whatsapp_status
+ * Recebe evento da skill e persiste. Cria registros derivados para tipos
+ * especiais: omie_error → omie_errors, wa_* → whatsapp_status.
  *
- * Auth: X-License header
+ * Auth: X-Panel-Token
  * Body: { instance_id, type, severity?, payload? }
  * Retorna: { event_id }
  */
@@ -15,7 +13,7 @@ import {
   corsHeaders,
   errorResponse,
   jsonResponse,
-  validateLicense,
+  validatePanelToken,
 } from "../_shared/auth.ts";
 
 const VALID_SEVERITIES = ["info", "warn", "error", "critical"] as const;
@@ -30,13 +28,10 @@ Deno.serve(async (req: Request) => {
     return errorResponse("Method not allowed", 405);
   }
 
-  // ── Validar licença ─────────────────────────────────────────────────────
-  const license = await validateLicense(req);
-  if (!license) {
-    return errorResponse("License inválida", 401);
+  if (!validatePanelToken(req)) {
+    return errorResponse("Token inválido", 401);
   }
 
-  // ── Parsear body ────────────────────────────────────────────────────────
   let body: {
     instance_id?: string;
     type?: string;
@@ -58,26 +53,12 @@ Deno.serve(async (req: Request) => {
     : "info";
 
   const payload = body.payload ?? {};
-
   const supabase = adminClient();
 
-  // ── Verificar que instance pertence a este tenant ───────────────────────
-  const { data: instance } = await supabase
-    .from("instances")
-    .select("id")
-    .eq("id", body.instance_id)
-    .eq("tenant_id", license.tenantId)
-    .maybeSingle();
-
-  if (!instance) {
-    return errorResponse("instance_id não encontrado ou não autorizado", 404);
-  }
-
-  // ── Inserir evento principal ────────────────────────────────────────────
+  // Inserir evento principal
   const { data: event, error: eventError } = await supabase
     .from("events")
     .insert({
-      tenant_id: license.tenantId,
       instance_id: body.instance_id,
       type: body.type,
       severity,
@@ -91,12 +72,9 @@ Deno.serve(async (req: Request) => {
     return errorResponse("Erro ao inserir evento", 500);
   }
 
-  // ── Registros derivados ─────────────────────────────────────────────────
-
-  // omie_error → omie_errors
+  // Registros derivados
   if (body.type === "omie_error") {
     await supabase.from("omie_errors").insert({
-      tenant_id: license.tenantId,
       instance_id: body.instance_id,
       command: payload.command as string ?? null,
       http_status: payload.http_status as number ?? null,
@@ -104,36 +82,21 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // wa_status_changed → whatsapp_status
-  if (body.type === "wa_status_changed") {
-    const wa_status = payload.status as string ?? "unknown";
-    const valid_statuses = ["connected", "disconnected", "qr_expired", "unknown"];
+  const WA_CONNECTED    = ["wa_status_changed", "whatsapp_reconnected", "whatsapp_repaired"];
+  const WA_DISCONNECTED = ["whatsapp_disconnected"];
+
+  if (WA_CONNECTED.includes(body.type)) {
     await supabase.from("whatsapp_status").insert({
-      tenant_id: license.tenantId,
       instance_id: body.instance_id,
-      status: valid_statuses.includes(wa_status) ? wa_status : "unknown",
+      status: (payload.status as string) ?? "connected",
       jid: payload.jid as string ?? null,
       last_check: new Date().toISOString(),
     });
-  }
-
-  // whatsapp_disconnected / whatsapp_repaired (de repare.sh / whatsapp-watch.sh)
-  if (body.type === "whatsapp_disconnected") {
+  } else if (WA_DISCONNECTED.includes(body.type)) {
     await supabase.from("whatsapp_status").insert({
-      tenant_id: license.tenantId,
       instance_id: body.instance_id,
       status: "disconnected",
       jid: null,
-      last_check: new Date().toISOString(),
-    });
-  }
-
-  if (body.type === "whatsapp_reconnected" || body.type === "whatsapp_repaired") {
-    await supabase.from("whatsapp_status").insert({
-      tenant_id: license.tenantId,
-      instance_id: body.instance_id,
-      status: "connected",
-      jid: payload.jid as string ?? null,
       last_check: new Date().toISOString(),
     });
   }

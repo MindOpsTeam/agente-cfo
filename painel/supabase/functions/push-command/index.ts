@@ -1,20 +1,10 @@
 /**
  * POST /push-command
- * Envia um comando do painel para a instância cliente via Cloudflare Tunnel.
- * O cliente recebe via POST /hooks/agent (endpoint OpenClaw).
+ * Envia comando do painel para a instância via Cloudflare Tunnel.
+ * Auth: JWT Supabase do dono logado no front Lovable.
  *
- * Auth: Supabase JWT (dono do painel — auth.uid() válido)
- * Body: { tenant_id, instance_id, command }
- *   command: string livre executado como message no hooks/agent
- *   Ex: "Execute: openclaw plugins update agente-cfo"
- *
- * Retorna: { ok: true, openclaw_response: <response do cliente> }
- *
- * Segurança:
- *   - JWT validado pelo Supabase (Authorization: Bearer <jwt>)
- *   - tenant_id do body deve bater com app_metadata.tenant_id do JWT
- *   - instance_id deve pertencer ao tenant
- *   - hooks_token da instância usado para autenticar no cliente
+ * Body: { instance_id, command }
+ * Retorna: { ok: true, openclaw_response }
  */
 
 import {
@@ -34,13 +24,12 @@ Deno.serve(async (req: Request) => {
     return errorResponse("Method not allowed", 405);
   }
 
-  // ── Validar JWT do dono (Supabase Auth) ────────────────────────────────
+  // Auth: JWT do dono (Supabase Auth padrão)
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     return errorResponse("Authorization header obrigatório", 401);
   }
 
-  // Client com o JWT do usuário para verificar identidade
   const supabaseUser = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_ANON_KEY")!,
@@ -52,18 +41,7 @@ Deno.serve(async (req: Request) => {
     return errorResponse("JWT inválido ou expirado", 401);
   }
 
-  // Extrair tenant_id do custom claim
-  const jwtTenantId = user.app_metadata?.tenant_id as string | undefined;
-  if (!jwtTenantId) {
-    return errorResponse("tenant_id não encontrado no JWT (custom claim ausente)", 403);
-  }
-
-  // ── Parsear body ────────────────────────────────────────────────────────
-  let body: {
-    tenant_id?: string;
-    instance_id?: string;
-    command?: string;
-  };
+  let body: { instance_id?: string; command?: string };
 
   try {
     body = await req.json();
@@ -71,49 +49,33 @@ Deno.serve(async (req: Request) => {
     return errorResponse("Body JSON inválido", 400);
   }
 
-  if (!body.tenant_id)   return errorResponse("tenant_id obrigatório", 400);
   if (!body.instance_id) return errorResponse("instance_id obrigatório", 400);
   if (!body.command)     return errorResponse("command obrigatório", 400);
 
-  // Validar que o tenant_id do body bate com o JWT
-  if (body.tenant_id !== jwtTenantId) {
-    return errorResponse("tenant_id não autorizado", 403);
-  }
-
   const supabase = adminClient();
 
-  // ── Buscar instância e validar posse ────────────────────────────────────
   const { data: instance } = await supabase
     .from("instances")
     .select("id, ingress_url, hooks_token, status")
     .eq("id", body.instance_id)
-    .eq("tenant_id", body.tenant_id)
     .maybeSingle();
 
   if (!instance) {
-    return errorResponse("instance_id não encontrado ou não autorizado", 404);
+    return errorResponse("instance_id não encontrado", 404);
   }
 
   if (!instance.ingress_url) {
-    return errorResponse("Instância não possui ingress_url configurado", 422);
+    return errorResponse("Instância sem ingress_url configurado", 422);
   }
 
   if (!instance.hooks_token) {
     return errorResponse(
-      "Instância não possui hooks_token — cliente precisa se re-registrar",
+      "Instância sem hooks_token — execute setup.sh novamente na VPS",
       422,
     );
   }
 
-  // ── Disparar comando no cliente via OpenClaw /hooks/agent ───────────────
-  const hookPayload = {
-    message: body.command,
-    name: "PainelCFO",
-    wakeMode: "now",
-    deliver: false,  // não precisamos da resposta no WhatsApp do cliente
-    timeoutSeconds: 60,
-  };
-
+  // POST para o OpenClaw da VPS via Cloudflare Tunnel
   let clientResponse: Response;
   let clientBody: string;
 
@@ -124,35 +86,27 @@ Deno.serve(async (req: Request) => {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${instance.hooks_token}`,
       },
-      body: JSON.stringify(hookPayload),
-      signal: AbortSignal.timeout(30_000),  // 30s timeout
+      body: JSON.stringify({
+        message: body.command,
+        name: "PainelCFO",
+        wakeMode: "now",
+        deliver: false,
+        timeoutSeconds: 60,
+      }),
+      signal: AbortSignal.timeout(30_000),
     });
     clientBody = await clientResponse.text();
   } catch (err) {
-    // Falha de rede — cliente offline ou tunnel down
     await supabase.from("audit_log").insert({
-      tenant_id: body.tenant_id,
       actor_user_id: user.id,
       action: "push_command_failed",
-      payload: {
-        instance_id: body.instance_id,
-        command: body.command,
-        error: String(err),
-      },
+      payload: { instance_id: body.instance_id, command: body.command, error: String(err) },
     });
-
-    // Marcar instância como degraded
-    await supabase
-      .from("instances")
-      .update({ status: "degraded" })
-      .eq("id", body.instance_id);
-
+    await supabase.from("instances").update({ status: "degraded" }).eq("id", body.instance_id);
     return errorResponse(`Falha ao contatar a instância: ${String(err)}`, 502);
   }
 
-  // ── Logar no audit_log ──────────────────────────────────────────────────
   await supabase.from("audit_log").insert({
-    tenant_id: body.tenant_id,
     actor_user_id: user.id,
     action: "push_command",
     payload: {
@@ -163,14 +117,8 @@ Deno.serve(async (req: Request) => {
   });
 
   if (!clientResponse.ok) {
-    return errorResponse(
-      `Cliente retornou erro ${clientResponse.status}: ${clientBody}`,
-      502,
-    );
+    return errorResponse(`Cliente retornou erro ${clientResponse.status}: ${clientBody}`, 502);
   }
 
-  return jsonResponse({
-    ok: true,
-    openclaw_response: clientBody,
-  });
+  return jsonResponse({ ok: true, openclaw_response: clientBody });
 });
