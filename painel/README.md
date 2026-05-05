@@ -1,6 +1,20 @@
 # Agente CFO — Painel Central (Backend)
 
-Backend Supabase do painel multi-tenant. O front (Lovable) conecta neste mesmo projeto.
+Backend Supabase do painel multi-tenant.
+
+> **Nota (2026-05-05):** Em produção, este backend roda em **Lovable Cloud** (Supabase managed pelo Lovable). O código autoritativo continua aqui no monorepo (`painel/supabase/`), espelhado para o repo Lovable em `painel-front/supabase/` e deployado via push GitHub. Os comandos `supabase` CLI abaixo só são úteis para desenvolvimento local independente — em produção, use o fluxo Lovable descrito ao final.
+
+## Fluxo de produção (Lovable Cloud)
+
+1. **Migrations:** aplicadas via `mcp__lovable__lovable_query_sql` (read_only=false) ou pelo SQL Editor do Supabase do projeto.
+2. **Edge functions:** copiar de `painel/supabase/functions/` para `painel-front/supabase/functions/`, ajustar `painel-front/supabase/config.toml` com `verify_jwt`, commit e push. Lovable detecta e deploya.
+3. **Project IDs (workspace MindOpsTeam):**
+   - Lovable project: `ddcd382f-f68a-478d-a2a5-811a860ba83c`
+   - Supabase project (Cloud): `odhcfrgydjluxunhvojp`
+   - Supabase URL: `https://odhcfrgydjluxunhvojp.supabase.co`
+   - Repo front Lovable: `github.com/MindOpsTeam/carteira-do-agente`
+
+## Fluxo local (alternativo, raramente usado)
 
 ## Pré-requisitos
 
