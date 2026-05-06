@@ -172,7 +172,7 @@ O `check-budget.sh` lê esse arquivo para pausar/retomar os crons via `openclaw 
 | `prompts/categorizacao.md` | Ad-hoc | Categorizar lançamentos novos |
 | `prompts/doctor.md` | Ad-hoc | Narrativa do health check |
 
-## Estrutura de Logs
+## Estrutura de Logs e Memória
 
 ```
 ~/.agente-cfo/
@@ -184,9 +184,26 @@ O `check-budget.sh` lê esse arquivo para pausar/retomar os crons via `openclaw 
 │   ├── heartbeat.log
 │   ├── doctor.log
 │   └── repare.log
+├── memory/               # chmod 700 — memória local do agente (nunca vai ao painel)
+│   ├── empresa.md        # fatos sobre a empresa (nome, segmento, sazonalidade)
+│   ├── preferencias_dono.md
+│   ├── eventos.md        # linha do tempo append-only
+│   ├── decisoes.md       # decisões registradas
+│   └── metricas_baseline.md
 ├── cron-ids.env          # IDs dos cron jobs (escrito pelo setup.sh)
 └── budget-state.json     # Acumulador de custo mensal
 ```
+
+## Identidade do Agente
+
+Os arquivos em `skills/agente-cfo/identity/` definem quem é o agente, como ele fala e
+como gerencia memória. São lidos no início de cada prompt:
+
+| Arquivo | Conteúdo |
+|---|---|
+| `identity/identity.md` | Nome, papel, background, especialidades, crenças operacionais |
+| `identity/soul.md` | Voz, tom, linguagem permitida/proibida, guardrails, postura de suporte |
+| `identity/memory.md` | Manual do sistema de memória local (`~/.agente-cfo/memory/`) |
 
 ## Setup Inicial (feito pelo setup.sh do instalador)
 
