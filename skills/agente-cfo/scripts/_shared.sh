@@ -69,14 +69,21 @@ _panel_llm_usage() {
 
 # ── _panel_heartbeat() ────────────────────────────────────────────────────────
 # Atualiza last_heartbeat da instância via /heartbeat.
+# Inclui ingress_url no body se INGRESS_URL estiver definido no ambiente.
 _panel_heartbeat() {
     [[ -z "${PANEL_BASE_URL:-}" ]] && return 0
     [[ -z "${PANEL_TOKEN:-}" ]]    && return 0
     [[ -z "${INSTANCE_ID:-}" ]]    && return 0
 
+    local body="{\"instance_id\":\"${INSTANCE_ID}\""
+    if [[ -n "${INGRESS_URL:-}" ]]; then
+        body="${body},\"ingress_url\":\"${INGRESS_URL}\""
+    fi
+    body="${body}}"
+
     curl -s --max-time 10 -X POST "${PANEL_BASE_URL}/heartbeat" \
         -H "Content-Type: application/json" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" \
-        -d "{\"instance_id\":\"${INSTANCE_ID}\"}" \
+        -d "$body" \
         > /dev/null 2>&1 || true
 }
