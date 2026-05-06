@@ -17,6 +17,9 @@ metadata:
 CFO virtual para PME brasileira. Conecta o ERP Omie ao WhatsApp do dono da empresa,
 gerando insights financeiros diários sem intervenção manual.
 
+Modelo: **single-tenant** — cada cliente roda sua própria instância (VPS + OpenClaw + skill).
+Sem multi-tenancy, sem license key. Auth VPS↔painel via `X-Panel-Token`.
+
 ## Arquitetura
 
 ```
@@ -33,7 +36,7 @@ gerando insights financeiros diários sem intervenção manual.
             wacli send text (WhatsApp)
                      │
                      ▼
-            curl → PANEL_WEBHOOK_URL (painel central)
+            curl → PANEL_BASE_URL/event (painel central)
 ```
 
 ## Variáveis de Ambiente Requeridas
@@ -43,20 +46,46 @@ gerando insights financeiros diários sem intervenção manual.
 | `OMIE_APP_KEY` | App Key da integração Omie | `12345678901` |
 | `OMIE_APP_SECRET` | App Secret da integração Omie | `abc123def456...` |
 | `CFO_WHATSAPP_TO` | Número destino dos alertas (E.164) | `+5511999999999` |
-| `LICENSE_KEY` | Chave de licença do produto | `lk_prod_xxx` |
-| `TENANT_ID` | Identificador do cliente no painel | `empresa-abc` |
+| `ANTHROPIC_API_KEY` | Chave de API Anthropic | `sk-ant-...` |
+| `PANEL_BASE_URL` | URL do Supabase Edge Functions do cliente | `https://xxxx.supabase.co/functions/v1` |
+| `PANEL_TOKEN` | Token de autenticação VPS↔painel | `(gerado pelo setup.sh)` |
+| `INSTANCE_ID` | UUID da instância no painel | `(gerado pelo setup.sh)` |
+| `HOOKS_TOKEN` | Token de auth do endpoint /hooks/agent | `(gerado pelo setup.sh)` |
 | `LLM_BUDGET_BRL` | Teto mensal de custo LLM em BRL | `50` |
 
 ## Variáveis Opcionais
 
 | Variável | Descrição | Padrão |
 |---|---|---|
-| `PANEL_WEBHOOK_URL` | URL do painel central para telemetria | _(vazio — tolerado)_ |
+| `INGRESS_URL` | URL pública do Cloudflare Tunnel | _(detectada automaticamente)_ |
 | `OMIE_SKILL_PATH` | Path absoluto da skill omie | `~/.openclaw/workspace/skills/omie` |
 | `CFO_LOG_DIR` | Diretório de logs | `~/.agente-cfo/logs` |
 | `CFO_STATE_DIR` | Diretório de estado (budget, cron-ids) | `~/.agente-cfo` |
 | `LLM_INPUT_PRICE_BRL` | Preço por 1M tokens input em BRL | `9.50` |
 | `LLM_OUTPUT_PRICE_BRL` | Preço por 1M tokens output em BRL | `47.50` |
+
+## Endpoint /hooks/agent
+
+O OpenClaw Gateway expõe nativamente o endpoint `/hooks/agent` **na porta 18789** (porta padrão do gateway).
+
+- **Método:** `POST`
+- **Auth:** `Authorization: Bearer <HOOKS_TOKEN>` (ou `X-OpenClaw-Token: <HOOKS_TOKEN>`)
+- **Body JSON:**
+
+```json
+{
+  "message":        "Execute: bash ~/.openclaw/workspace/skills/agente-cfo/scripts/cfo-reporter.sh ...",
+  "name":           "PainelCFO",
+  "wakeMode":       "now",
+  "deliver":        false,
+  "timeoutSeconds": 60
+}
+```
+
+- **Configuração:** o token vem de `hooks.token` no config do OpenClaw (setado automaticamente pelo `setup.sh` via variável de ambiente `HOOKS_TOKEN`).
+- **HTTPS externo:** o Cloudflare Tunnel (`INGRESS_URL`) faz proxy para `http://localhost:18789`, portanto o painel acessa via `${INGRESS_URL}/hooks/agent`.
+
+O `push-command` da edge function Supabase usa exatamente esse endpoint para enviar comandos do painel para a VPS.
 
 ## Ferramentas Expostas pela Skill
 
@@ -64,7 +93,7 @@ gerando insights financeiros diários sem intervenção manual.
 ```bash
 bash skills/agente-cfo/scripts/doctor.sh
 ```
-Testa: WhatsApp pareado, Omie acessível, LICENSE_KEY presente, webhook receiver rodando.
+Testa: WhatsApp pareado, Omie acessível, PANEL_TOKEN presente, conectividade com painel, endpoint /hooks/agent.
 Exit 0 = tudo ok. Exit 1 = falha em algum componente.
 
 ### 2. `repare.sh` — Re-pareamento WhatsApp
@@ -104,17 +133,33 @@ bash skills/agente-cfo/scripts/whatsapp-watch.sh
 Poll a cada 30 minutos via `wacli doctor`. Se QR expirado, alerta via mensagem no terminal
 e reporta ao painel. Rode como processo background ou cron separado.
 
+### 7. `heartbeat.sh` — Heartbeat ao painel
+```bash
+bash skills/agente-cfo/scripts/heartbeat.sh
+```
+Chamado pelo cron `*/5 * * * *`. Envia heartbeat ao painel incluindo `INGRESS_URL` atual
+(re-detectada do cloudflared se mudou).
+
 ## Cron Jobs (registrados pelo setup.sh)
 
-Os IDs dos crons são salvos em `~/.agente-cfo/cron-ids.env` pelo instalador:
+5 cron jobs são registrados. Os IDs são salvos em `~/.agente-cfo/cron-ids.env`:
 
 ```bash
 # ~/.agente-cfo/cron-ids.env (gerado pelo setup.sh)
-CRON_ID_MANHA=abc123
-CRON_ID_TARDE=def456
-CRON_ID_BUDGET=ghi789
-CRON_ID_WATCHER=jkl012
+CRON_ID_MANHA=<uuid>
+CRON_ID_TARDE=<uuid>
+CRON_ID_HEARTBEAT=<uuid>
+CRON_ID_BUDGET=<uuid>
+CRON_ID_WA_WATCH=<uuid>
 ```
+
+| Job | Schedule | Descrição |
+|---|---|---|
+| `alerta_manha` | 07:00 BRT | Alerta matinal — saldo + contas do dia |
+| `alerta_tarde` | 18:00 BRT | Resumo do dia + projeção 7 dias |
+| `heartbeat` | `*/5 * * * *` | Keepalive + ingress_url para o painel |
+| `check-budget` | 03:00 BRT | Controle de custo LLM mensal |
+| `whatsapp-watch` | `*/30 * * * *` | Monitor de conexão WhatsApp |
 
 O `check-budget.sh` lê esse arquivo para pausar/retomar os crons via `openclaw cron disable/enable`.
 
@@ -136,6 +181,7 @@ O `check-budget.sh` lê esse arquivo para pausar/retomar os crons via `openclaw 
 │   ├── omie-pull-wrapper.log
 │   ├── check-budget.log
 │   ├── whatsapp-watch.log
+│   ├── heartbeat.log
 │   ├── doctor.log
 │   └── repare.log
 ├── cron-ids.env          # IDs dos cron jobs (escrito pelo setup.sh)
@@ -144,7 +190,7 @@ O `check-budget.sh` lê esse arquivo para pausar/retomar os crons via `openclaw 
 
 ## Setup Inicial (feito pelo setup.sh do instalador)
 
-O setup.sh do instalador registra os crons e salva os IDs. A skill não registra crons
+O setup.sh registra os crons e salva os IDs. A skill não registra crons
 por conta própria — apenas documenta os comandos esperados:
 
 ```bash

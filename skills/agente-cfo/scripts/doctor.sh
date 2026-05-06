@@ -31,7 +31,7 @@ register() {
 }
 
 # ── 1. WhatsApp (wacli doctor) ────────────────────────────────────────────────
-echo "[1/4] Verificando WhatsApp..."
+echo "[1/5] Verificando WhatsApp..."
 if wacli_out=$(wacli doctor --json 2>/dev/null); then
     wa_status=$(echo "$wacli_out" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
     if [[ "$wa_status" == "ok" || "$wa_status" == "connected" ]]; then
@@ -48,7 +48,7 @@ else
 fi
 
 # ── 2. Omie ERP (ping via resumo_financeiro, timeout 15s) ─────────────────────
-echo "[2/4] Verificando Omie ERP..."
+echo "[2/5] Verificando Omie ERP..."
 if [[ -z "${OMIE_APP_KEY:-}" || -z "${OMIE_APP_SECRET:-}" ]]; then
     register "Omie ERP" "$FAIL" "OMIE_APP_KEY ou OMIE_APP_SECRET não definidos"
 else
@@ -68,24 +68,53 @@ else
     fi
 fi
 
-# ── 3. LICENSE_KEY presente ───────────────────────────────────────────────────
-echo "[3/4] Verificando licença..."
-if [[ -n "${LICENSE_KEY:-}" ]]; then
-    if [[ "$LICENSE_KEY" == lk_* ]]; then
-        register "Licença (LICENSE_KEY)" "$PASS" "presente e formato válido"
-    else
-        register "Licença (LICENSE_KEY)" "$WARN" "presente mas formato inesperado"
-    fi
+# ── 3. PANEL_TOKEN + conectividade com painel ────────────────────────────────
+echo "[3/5] Verificando painel..."
+if [[ -z "${PANEL_TOKEN:-}" ]]; then
+    register "Painel (PANEL_TOKEN)" "$FAIL" "PANEL_TOKEN não definido no ambiente"
 else
-    register "Licença (LICENSE_KEY)" "$FAIL" "LICENSE_KEY não definido no ambiente"
+    register "Painel (PANEL_TOKEN)" "$PASS" "presente"
 fi
 
-# ── 4. Webhook receiver (porta 8089) ─────────────────────────────────────────
-echo "[4/4] Verificando webhook receiver..."
-if curl -fs --max-time 5 "http://127.0.0.1:8089/health" > /dev/null 2>&1; then
-    register "Webhook receiver (8089)" "$PASS" "respondendo"
+# Verificar conectividade com instance-register (HEAD ou GET — apenas checa se responde)
+if [[ -n "${PANEL_BASE_URL:-}" ]]; then
+    PANEL_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+        -X HEAD "${PANEL_BASE_URL}/instance-register" \
+        -H "X-Panel-Token: ${PANEL_TOKEN:-}" 2>/dev/null || echo "000")
+    if [[ "$PANEL_HTTP" =~ ^(200|204|401|405)$ ]]; then
+        register "Painel (instance-register)" "$PASS" "respondendo (HTTP $PANEL_HTTP)"
+    elif [[ "$PANEL_HTTP" == "000" ]]; then
+        register "Painel (instance-register)" "$FAIL" "timeout ou sem conectividade"
+    else
+        register "Painel (instance-register)" "$WARN" "HTTP inesperado: $PANEL_HTTP"
+    fi
 else
-    register "Webhook receiver (8089)" "$WARN" "não está rodando (opcional para operação básica)"
+    register "Painel (instance-register)" "$WARN" "PANEL_BASE_URL não definido — pulando"
+fi
+
+# ── 4. Endpoint /hooks/agent (OpenClaw Gateway na porta 18789) ───────────────
+echo "[4/5] Verificando /hooks/agent..."
+HOOKS_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+    -X POST "http://localhost:18789/hooks/agent" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer wrongtoken_doctor_check" \
+    -d '{}' 2>/dev/null || echo "000")
+if [[ "$HOOKS_HTTP" == "401" ]]; then
+    register "OpenClaw /hooks/agent" "$PASS" "respondendo (401 auth — esperado)"
+elif [[ "$HOOKS_HTTP" == "200" ]]; then
+    register "OpenClaw /hooks/agent" "$WARN" "respondendo sem auth — verifique hooks.token"
+elif [[ "$HOOKS_HTTP" == "000" ]]; then
+    register "OpenClaw /hooks/agent" "$FAIL" "não responde — gateway rodando? (porta 18789)"
+else
+    register "OpenClaw /hooks/agent" "$WARN" "HTTP inesperado: $HOOKS_HTTP"
+fi
+
+# ── 5. Webhook receiver legado (porta 8089) — opcional ───────────────────────
+echo "[5/5] Verificando webhook receiver legado..."
+if curl -fs --max-time 5 "http://127.0.0.1:8089/health" > /dev/null 2>&1; then
+    register "Webhook receiver legado (8089)" "$PASS" "respondendo"
+else
+    register "Webhook receiver legado (8089)" "$WARN" "não está rodando (opcional)"
 fi
 
 # ── Tabela de resultado ───────────────────────────────────────────────────────
@@ -117,10 +146,12 @@ for i in "${!CHECK_NAMES[@]}"; do
 
     # Mapear para chaves do payload do painel
     case "$name" in
-        *WhatsApp*)  COMPONENTS["whatsapp"]="${status,,}" ;;
-        *Omie*)      COMPONENTS["omie"]="${status,,}" ;;
-        *Licença*)   COMPONENTS["license"]="${status,,}" ;;
-        *Webhook*)   COMPONENTS["webhook"]="${status,,}" ;;
+        *WhatsApp*)            COMPONENTS["whatsapp"]="${status,,}" ;;
+        *Omie*)                COMPONENTS["omie"]="${status,,}" ;;
+        *PANEL_TOKEN*)         COMPONENTS["panel_token"]="${status,,}" ;;
+        *instance-register*)   COMPONENTS["panel_connect"]="${status,,}" ;;
+        */hooks/agent*)        COMPONENTS["hooks_agent"]="${status,,}" ;;
+        *Webhook*legado*)      COMPONENTS["webhook_legacy"]="${status,,}" ;;
     esac
 done
 
@@ -137,12 +168,13 @@ fi
 OVERALL_STR=$([ $OVERALL -eq 0 ] && echo "ok" || echo "fail")
 SEVERITY=$([ $OVERALL -eq 0 ] && echo "info" || echo "critical")
 
-PAYLOAD=$(printf '{"overall":"%s","components":{"whatsapp":"%s","omie":"%s","license":"%s","webhook":"%s"}}' \
+PAYLOAD=$(printf '{"overall":"%s","components":{"whatsapp":"%s","omie":"%s","panel_token":"%s","panel_connect":"%s","hooks_agent":"%s"}}' \
     "$OVERALL_STR" \
     "${COMPONENTS[whatsapp]:-unknown}" \
     "${COMPONENTS[omie]:-unknown}" \
-    "${COMPONENTS[license]:-unknown}" \
-    "${COMPONENTS[webhook]:-unknown}")
+    "${COMPONENTS[panel_token]:-unknown}" \
+    "${COMPONENTS[panel_connect]:-unknown}" \
+    "${COMPONENTS[hooks_agent]:-unknown}")
 
 _panel_event "doctor" "$SEVERITY" "$PAYLOAD"
 
