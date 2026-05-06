@@ -89,6 +89,34 @@ NODE_VER=$(node --version | tr -d 'v' | cut -d. -f1)
 [[ "$NODE_VER" -lt 18 ]] && fail "Node.js >= 18 obrigatório (encontrado: $(node --version))"
 ok "Dependências OK."
 
+# ── Pre-flight 1b: validar flags do openclaw cron add ────────────────────────
+# As flags abaixo são usadas no PASSO 12. Se não existirem nessa versão do
+# OpenClaw, os cron jobs seriam registrados errado e o setup terminaria verde
+# com IDs falsos. Melhor falhar aqui, antes de fazer qualquer mudança.
+if command -v openclaw &>/dev/null; then
+    info "Verificando suporte a flags de 'openclaw cron add'..."
+    _CRON_HELP=$(openclaw cron add --help 2>&1 || true)
+    _OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "desconhecida")
+    _CRON_FLAGS_OK=1
+
+    for _flag in "--no-deliver" "--light-context" "--session" "--json"; do
+        if echo "$_CRON_HELP" | grep -qF "$_flag"; then
+            ok "openclaw cron add ${_flag}: suportado"
+        else
+            warn "OpenClaw ${_OC_VERSION} não suporta a flag '${_flag}' em 'cron add'."
+            _CRON_FLAGS_OK=0
+        fi
+    done
+
+    if [[ $_CRON_FLAGS_OK -eq 0 ]]; then
+        fail "Uma ou mais flags obrigatórias não estão disponíveis no OpenClaw ${_OC_VERSION}.
+Atualize o OpenClaw com: npm install -g openclaw@latest
+Se o problema persistir, abra uma issue em: https://github.com/openclaw/openclaw
+Instalação abortada para evitar cron jobs quebrados."
+    fi
+    ok "Flags de cron add: todas suportadas."
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 2: Instalar/atualizar OpenClaw
 # ─────────────────────────────────────────────────────────────────────────────
@@ -463,7 +491,17 @@ except:
     print(m.group() if m else '')
 " 2>/dev/null || echo "")
 
-    [[ -z "$new_id" ]] && { warn "Não capturei ID de $var_name. Verifique: openclaw cron list"; new_id="unknown-$(date +%s)"; }
+    # UUID válido é obrigatório — setup nunca termina verde com ID falso.
+    if [[ -z "$new_id" ]] || ! echo "$new_id" | grep -qP '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'; then
+        fail "Não foi possível capturar um UUID válido para o cron '${var_name}'.
+Saída do comando:
+$(eval "$cron_cmd" 2>&1 | head -20)
+
+Verifique:
+  • OpenClaw está rodando? (openclaw gateway status)
+  • Flags suportadas? (openclaw cron add --help)
+  • Execute manualmente e veja o output: ${cron_cmd}"
+    fi
 
     export "$var_name"="$new_id"
     { grep -v "^${var_name}=" "$CRON_IDS_FILE" 2>/dev/null || true; echo "${var_name}=${new_id}"; } \
