@@ -392,6 +392,16 @@ EOF
 chmod 600 "$ENV_FILE"
 ok "Config salva em $ENV_FILE (chmod 600)."
 
+# ── Configurar hooks no OpenClaw (expõe /hooks/agent na porta 18789) ─────────
+# O painel envia comandos via POST ${INGRESS_URL}/hooks/agent → Cloudflare Tunnel
+# → localhost:18789/hooks/agent. O OpenClaw Gateway precisa de hooks.enabled=true
+# e hooks.token configurado para autenticar as requisições do painel.
+if command -v openclaw &>/dev/null; then
+    openclaw config set hooks.enabled true   2>/dev/null || warn "Não configurou hooks.enabled (ignora se OpenClaw não iniciou ainda)."
+    openclaw config set hooks.token "${HOOKS_TOKEN}" 2>/dev/null || warn "Não configurou hooks.token (ignora se OpenClaw não iniciou ainda)."
+    ok "OpenClaw hooks configurados (token: ${HOOKS_TOKEN:0:8}...)."
+fi
+
 # Exportar ANTHROPIC_API_KEY para o OpenClaw
 grep -q "ANTHROPIC_API_KEY" "${HOME}/.bashrc" 2>/dev/null || \
     echo "export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" >> "${HOME}/.bashrc"
