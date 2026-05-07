@@ -67,15 +67,31 @@ DATA_HOJE_ISO=$(date '+%Y-%m-%d')
 CONTEXT_FILE=$(mktemp /tmp/cfo-context-XXXXXX.json)
 trap 'rm -f "$CONTEXT_FILE"' EXIT
 
+# _json_or_raw: parseia entrada como JSON; se inválido, envelopa como string
+_json_or_raw() {
+    python3 - <<'PY'
+import sys, json
+data = sys.stdin.read().strip()
+try:
+    print(json.dumps(json.loads(data), ensure_ascii=False))
+except json.JSONDecodeError:
+    print(json.dumps(data, ensure_ascii=False))
+PY
+}
+
+RESUMO_JSON=$(echo "$RESUMO_FINANCEIRO" | _json_or_raw)
+RECEBER_JSON=$(echo "$CONTAS_RECEBER" | _json_or_raw)
+PAGAR_JSON=$(echo "$CONTAS_PAGAR" | _json_or_raw)
+
 cat > "$CONTEXT_FILE" << EOF
 {
   "prompt_file": "$PROMPT_FILE",
   "data_hoje": "$DATA_HOJE",
   "data_hoje_iso": "$DATA_HOJE_ISO",
   "whatsapp_to": "$CFO_WHATSAPP_TO",
-  "omie_resumo_financeiro": $(echo "$RESUMO_FINANCEIRO" | python3 -c "import sys,json; data=sys.stdin.read(); print(json.dumps(data))" 2>/dev/null || echo "\"erro ao parsear\""),
-  "omie_contas_receber": $(echo "$CONTAS_RECEBER" | python3 -c "import sys,json; data=sys.stdin.read(); print(json.dumps(data))" 2>/dev/null || echo "\"erro ao parsear\""),
-  "omie_contas_pagar": $(echo "$CONTAS_PAGAR" | python3 -c "import sys,json; data=sys.stdin.read(); print(json.dumps(data))" 2>/dev/null || echo "\"erro ao parsear\"")
+  "omie_resumo_financeiro": ${RESUMO_JSON},
+  "omie_contas_receber": ${RECEBER_JSON},
+  "omie_contas_pagar": ${PAGAR_JSON}
 }
 EOF
 
