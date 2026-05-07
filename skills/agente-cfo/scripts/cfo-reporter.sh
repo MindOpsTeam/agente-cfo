@@ -129,10 +129,10 @@ else
     echo ""
     echo "O agente deve agora gerar a mensagem conforme o prompt e enviá-la via:"
     echo "  wacli send text --to \"$CFO_WHATSAPP_TO\" --message \"<mensagem_gerada>\""
-
-    # Report de conclusão (agente enviará depois, mas registramos a execução)
-    _panel_event "alerta_enviado" "info" \
-        "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"ok\",\"mode\":\"agent\"}"
+    echo ""
+    echo "Após o wacli send, o agente deve confirmar o envio chamando:"
+    echo "  bash \"$SCRIPT_DIR/_emit_alerta_enviado.sh\" \"$PROMPT_NAME\" \"<exit_code>\""
+    echo "  (0 = sucesso, != 0 = falha — use o exit code real do wacli)"
 fi
 
 echo "=== cfo-reporter.sh [$PROMPT_NAME] encerrado com sucesso ==="

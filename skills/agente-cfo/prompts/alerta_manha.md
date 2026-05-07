@@ -68,3 +68,19 @@ Após montar a mensagem:
 1. Envie via: `wacli send text --to "$CFO_WHATSAPP_TO" --message "<mensagem>"`
 2. Confirme o envio verificando o exit code do wacli (0 = sucesso).
 3. Se falhar, registre o erro no log e encerre com exit code 1.
+
+## Confirmação de Envio no Painel (obrigatório)
+
+Após executar o `wacli send`, confirme o resultado no painel de monitoramento:
+
+```bash
+WACLI_EXIT=$?
+bash "$SCRIPT_DIR/_emit_alerta_enviado.sh" "alerta_manha" "$WACLI_EXIT"
+```
+
+Onde:
+- `$SCRIPT_DIR` é o diretório dos scripts da skill (`skills/agente-cfo/scripts/`)
+- Exit code `0` = envio ok → painel registra `alerta_enviado:info`
+- Exit code `!= 0` = falha → painel registra `alerta_enviado:error`
+
+Não pule esta etapa. O painel só sabe que o alerta foi enviado quando este script roda.
