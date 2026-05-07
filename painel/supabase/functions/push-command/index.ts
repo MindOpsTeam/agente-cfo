@@ -30,9 +30,15 @@ Deno.serve(async (req: Request) => {
     return errorResponse("Authorization header obrigatório", 401);
   }
 
+  const anonKey = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY");
+  if (!anonKey) {
+    console.error("Missing SUPABASE_PUBLISHABLE_KEY/SUPABASE_ANON_KEY env");
+    return errorResponse("Configuracao do painel incompleta", 500);
+  }
+
   const supabaseUser = createClient(
     Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_ANON_KEY")!,
+    anonKey,
     { global: { headers: { Authorization: authHeader } } },
   );
 
