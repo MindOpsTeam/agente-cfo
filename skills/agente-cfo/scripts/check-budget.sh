@@ -28,39 +28,41 @@ echo "=== check-budget.sh iniciado em $TIMESTAMP ==="
 # ── Parsear tokens dos JSONL de sessões ───────────────────────────────────────
 calcular_tokens_mes() {
     local mes="$1"
-    local input_tokens=0
-    local output_tokens=0
 
     if [[ ! -d "$SESSIONS_DIR" ]]; then
-        echo "0 0 unknown"
+        echo "0 0"
         return
     fi
 
-    # Coleta de tokens e session IDs; retorna totais + lista de sessions
-    while IFS= read -r -d '' jsonl_file; do
-        while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            read -r in_tok out_tok <<< "$(echo "$line" | python3 -c "
+    # Lê todos os .jsonl de uma vez em um único processo Python — evita N forks
+    find "$SESSIONS_DIR" -name "*.jsonl" -print0 2>/dev/null     | xargs -0 cat 2>/dev/null     | python3 - <<PY
 import sys, json
-try:
-    d = json.loads(sys.stdin.read())
-    ts = d.get('timestamp','') or d.get('created_at','') or d.get('ts','')
-    if not ts.startswith('$mes'):
-        print(0, 0)
-        sys.exit()
-    usage = d.get('usage', {}) or d.get('response', {}).get('usage', {}) or {}
-    i = usage.get('inputTokens', usage.get('input_tokens', 0)) or 0
-    o = usage.get('outputTokens', usage.get('output_tokens', 0)) or 0
-    print(i, o)
-except:
-    print(0, 0)
-" 2>/dev/null || echo "0 0")"
-            input_tokens=$((input_tokens + in_tok))
-            output_tokens=$((output_tokens + out_tok))
-        done < "$jsonl_file"
-    done < <(find "$SESSIONS_DIR" -name "*.jsonl" -print0 2>/dev/null)
 
-    echo "$input_tokens $output_tokens"
+mes = "$mes"
+total_in, total_out = 0, 0
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        # Timestamp pode vir em campos variados dependendo da versão do OpenClaw
+        ts = d.get("timestamp", "") or d.get("created_at", "") or d.get("ts", "") or ""
+        if not str(ts).startswith(mes):
+            continue
+        usage = (
+            d.get("usage")
+            or d.get("response", {}).get("usage")
+            or {}
+        )
+        total_in  += int(usage.get("inputTokens",  usage.get("input_tokens",  0)) or 0)
+        total_out += int(usage.get("outputTokens", usage.get("output_tokens", 0)) or 0)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        continue
+
+print(total_in, total_out)
+PY
 }
 
 # ── Calcular custo ────────────────────────────────────────────────────────────
