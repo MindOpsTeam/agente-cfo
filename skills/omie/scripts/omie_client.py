@@ -235,6 +235,72 @@ def unified_company_info():
     return {"name": os.environ.get("OMIE_COMPANY_NAME", "N/A"), "cnpj": None, "segment": "ERP"}
 
 
+def unified_pay_payable(id: str) -> dict:
+    """Marca conta a pagar como paga via AlterarContaPagar."""
+    today = datetime.now().strftime("%d/%m/%Y")
+    data = api_call("financas/contaspagar", "AlterarContaPagar", [
+        {"nCodTitulo": int(id), "cStatus": "PAGO", "dDtPagamento": today}
+    ])
+    if "error" in data:
+        raise RuntimeError(f"Omie pay_payable: {data}")
+    return {"success": True, "action": "pay_payable", "id": id,
+            "before": {"status": "pending"}, "after": {"status": "paid", "paid_at": date.today().isoformat()},
+            "raw": data}
+
+
+def unified_mark_received(id: str) -> dict:
+    """Marca conta a receber como recebida via AlterarContaReceber."""
+    today = datetime.now().strftime("%d/%m/%Y")
+    data = api_call("financas/contasreceber", "AlterarContaReceber", [
+        {"nCodTitulo": int(id), "cStatus": "RECEBIDO", "dDtRecebimento": today}
+    ])
+    if "error" in data:
+        raise RuntimeError(f"Omie mark_received: {data}")
+    return {"success": True, "action": "mark_received", "id": id,
+            "before": {"status": "pending"}, "after": {"status": "received", "received_at": date.today().isoformat()},
+            "raw": data}
+
+
+def unified_create_payable(amount: float, due_date: str, supplier: str, **kwargs) -> dict:
+    """Cria conta a pagar via IncluirContaPagar."""
+    data = api_call("financas/contaspagar", "IncluirContaPagar", [{
+        "nValorTitulo": amount,
+        "dDtVenc": due_date,
+        "cFornecedor": supplier,
+        "cCategoria": kwargs.get("category", ""),
+        "cObs": kwargs.get("description", ""),
+    }])
+    if "error" in data:
+        raise RuntimeError(f"Omie create_payable: {data}")
+    new_id = data.get("nCodTitulo", "")
+    return {"success": True, "action": "create_payable", "id": str(new_id), "raw": data}
+
+
+def unified_create_receivable(amount: float, due_date: str, customer: str, **kwargs) -> dict:
+    """Cria conta a receber via IncluirContaReceber."""
+    data = api_call("financas/contasreceber", "IncluirContaReceber", [{
+        "nValorTitulo": amount,
+        "dDtVenc": due_date,
+        "cCliente": customer,
+        "cCategoria": kwargs.get("category", ""),
+        "cObs": kwargs.get("description", ""),
+    }])
+    if "error" in data:
+        raise RuntimeError(f"Omie create_receivable: {data}")
+    new_id = data.get("nCodTitulo", "")
+    return {"success": True, "action": "create_receivable", "id": str(new_id), "raw": data}
+
+
+def unified_cancel_payable(id: str) -> dict:
+    """Exclui conta a pagar via ExcluirContaPagar."""
+    data = api_call("financas/contaspagar", "ExcluirContaPagar", [
+        {"nCodTitulo": int(id)}
+    ])
+    if "error" in data:
+        raise RuntimeError(f"Omie cancel_payable: {data}")
+    return {"success": True, "action": "cancel_payable", "id": id, "raw": data}
+
+
 def unified_list_overdue():
     today = date.today().isoformat()
     pag = unified_list_payables(limit=200)
@@ -314,6 +380,33 @@ if __name__ == "__main__":
             result = unified_list_overdue()
         elif command == "company_info":
             result = unified_company_info()
+        elif command == "pay_payable":
+            kw = _parse_kwargs(sys.argv[2:])
+            result = unified_pay_payable(id=kw.get("id", ""))
+        elif command == "mark_received":
+            kw = _parse_kwargs(sys.argv[2:])
+            result = unified_mark_received(id=kw.get("id", ""))
+        elif command == "create_payable":
+            kw = _parse_kwargs(sys.argv[2:])
+            result = unified_create_payable(
+                amount=float(kw.get("amount", 0)),
+                due_date=kw.get("due_date", ""),
+                supplier=kw.get("supplier", ""),
+                category=kw.get("category"),
+                description=kw.get("description"),
+            )
+        elif command == "create_receivable":
+            kw = _parse_kwargs(sys.argv[2:])
+            result = unified_create_receivable(
+                amount=float(kw.get("amount", 0)),
+                due_date=kw.get("due_date", ""),
+                customer=kw.get("customer", ""),
+                category=kw.get("category"),
+                description=kw.get("description"),
+            )
+        elif command == "cancel_payable":
+            kw = _parse_kwargs(sys.argv[2:])
+            result = unified_cancel_payable(id=kw.get("id", ""))
 
         # ── Comandos legados Omie ──
         elif command == "clientes_listar":

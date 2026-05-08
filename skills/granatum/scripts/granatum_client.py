@@ -5,6 +5,8 @@ import os
 import sys
 import time
 
+import json as _json
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "_lib"))
 from base import BaseERPClient, http_request, emit, emit_error, now_iso, make_list_response
 
@@ -79,6 +81,62 @@ class GranatumClient(BaseERPClient):
                 "raw": r,
             })
         return make_list_response(items, page=page, total_count=len(items))
+
+    def _put(self, path, body: dict):
+        url = self._url(path)
+        return http_request("PUT", url, headers={"Content-Type": "application/json"},
+                            body=_json.dumps(body).encode())
+
+    def _post(self, path, body: dict):
+        url = self._url(path)
+        return http_request("POST", url, headers={"Content-Type": "application/json"},
+                            body=_json.dumps(body).encode())
+
+    def _delete(self, path):
+        url = self._url(path)
+        return http_request("DELETE", url)
+
+    def pay_payable(self, id: str) -> dict:
+        from datetime import date
+        today = date.today().isoformat()
+        raw = self._put(f"lancamentos/{id}", {"data_pagamento": today})
+        return {"success": True, "action": "pay_payable", "id": id,
+                "before": {"status": "pending"}, "after": {"status": "paid", "paid_at": today}, "raw": raw}
+
+    def mark_received(self, id: str) -> dict:
+        from datetime import date
+        today = date.today().isoformat()
+        raw = self._put(f"lancamentos/{id}", {"data_pagamento": today})
+        return {"success": True, "action": "mark_received", "id": id,
+                "before": {"status": "pending"}, "after": {"status": "received", "received_at": today}, "raw": raw}
+
+    def create_payable(self, amount: float, due_date: str, supplier: str, **kwargs) -> dict:
+        body = {
+            "valor": -abs(amount),
+            "data_vencimento": due_date,
+            "descricao": supplier,
+            "tipo_lancamento_id": 2,
+        }
+        if kwargs.get("category"):
+            body["categoria"] = {"descricao": kwargs["category"]}
+        raw = self._post("lancamentos", body)
+        new_id = raw.get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_payable", "id": str(new_id), "raw": raw}
+
+    def create_receivable(self, amount: float, due_date: str, customer: str, **kwargs) -> dict:
+        body = {
+            "valor": abs(amount),
+            "data_vencimento": due_date,
+            "descricao": customer,
+            "tipo_lancamento_id": 1,
+        }
+        raw = self._post("lancamentos", body)
+        new_id = raw.get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_receivable", "id": str(new_id), "raw": raw}
+
+    def cancel_payable(self, id: str) -> dict:
+        raw = self._delete(f"lancamentos/{id}")
+        return {"success": True, "action": "cancel_payable", "id": id, "raw": raw}
 
     def company_info(self):
         return {"name": "N/A", "cnpj": None, "segment": "ERP"}

@@ -233,6 +233,32 @@ class BaseERPClient(ABC):
     def company_info(self) -> dict:
         return {"name": "N/A", "cnpj": None, "segment": None}
 
+    # ── Write operations (opcional — implementar por skill quando API suporta) ──
+
+    def pay_payable(self, id: str) -> dict:
+        """Marca conta a pagar como paga. Retorna {success, action, before, after, raw}."""
+        raise NotImplementedError(f"{self.SKILL_NAME}: pay_payable nao implementado")
+
+    def mark_received(self, id: str) -> dict:
+        """Marca conta a receber como recebida."""
+        raise NotImplementedError(f"{self.SKILL_NAME}: mark_received nao implementado")
+
+    def create_payable(self, amount: float, due_date: str, supplier: str, **kwargs) -> dict:
+        """Cria conta a pagar. Retorna {success, action, id, raw}."""
+        raise NotImplementedError(f"{self.SKILL_NAME}: create_payable nao implementado")
+
+    def create_receivable(self, amount: float, due_date: str, customer: str, **kwargs) -> dict:
+        """Cria conta a receber."""
+        raise NotImplementedError(f"{self.SKILL_NAME}: create_receivable nao implementado")
+
+    def cancel_payable(self, id: str) -> dict:
+        """Cancela/exclui conta a pagar."""
+        raise NotImplementedError(f"{self.SKILL_NAME}: cancel_payable nao implementado")
+
+    def update_category(self, id: str, category: str, record_type: str = "payable") -> dict:
+        """Atualiza categoria de um lancamento."""
+        raise NotImplementedError(f"{self.SKILL_NAME}: update_category nao implementado")
+
     def run_cli(self) -> None:
         command, kwargs = parse_cli_args()
         try:
@@ -256,8 +282,38 @@ class BaseERPClient(ABC):
                 emit(self.list_overdue())
             elif command == "company_info":
                 emit(self.company_info())
+            elif command == "pay_payable":
+                emit(self.pay_payable(id=kwargs.get("id", "")))
+            elif command == "mark_received":
+                emit(self.mark_received(id=kwargs.get("id", "")))
+            elif command == "create_payable":
+                emit(self.create_payable(
+                    amount=float(kwargs.get("amount", 0)),
+                    due_date=kwargs.get("due_date", ""),
+                    supplier=kwargs.get("supplier", ""),
+                    category=kwargs.get("category"),
+                    description=kwargs.get("description"),
+                ))
+            elif command == "create_receivable":
+                emit(self.create_receivable(
+                    amount=float(kwargs.get("amount", 0)),
+                    due_date=kwargs.get("due_date", ""),
+                    customer=kwargs.get("customer", ""),
+                    category=kwargs.get("category"),
+                    description=kwargs.get("description"),
+                ))
+            elif command == "cancel_payable":
+                emit(self.cancel_payable(id=kwargs.get("id", "")))
+            elif command == "update_category":
+                emit(self.update_category(
+                    id=kwargs.get("id", ""),
+                    category=kwargs.get("category", ""),
+                    record_type=kwargs.get("record_type", "payable"),
+                ))
             else:
                 emit_error(f"Comando desconhecido: {command}", code="unknown_command")
+        except NotImplementedError as e:
+            emit({"error": "not_supported", "message": str(e)})
         except RuntimeError as e:
             emit_error(str(e))
         except Exception as e:
@@ -296,6 +352,26 @@ class BaseCRMClient(ABC):
     def company_info(self) -> dict:
         return {"name": "N/A"}
 
+    # ── Write operations (opcional — implementar por skill quando API suporta) ──
+
+    def move_deal(self, id: str, to_stage: str) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: move_deal nao implementado")
+
+    def update_deal(self, id: str, amount: float | None = None, close_date: str | None = None) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: update_deal nao implementado")
+
+    def create_deal(self, title: str, amount: float | None = None, pipeline: str | None = None) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: create_deal nao implementado")
+
+    def add_deal_note(self, id: str, note: str) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: add_deal_note nao implementado")
+
+    def mark_deal_won(self, id: str) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: mark_deal_won nao implementado")
+
+    def mark_deal_lost(self, id: str, reason: str = "") -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: mark_deal_lost nao implementado")
+
     def run_cli(self) -> None:
         command, kwargs = parse_cli_args()
         try:
@@ -309,8 +385,24 @@ class BaseCRMClient(ABC):
                 emit(self.pipeline_summary())
             elif command == "company_info":
                 emit(self.company_info())
+            elif command == "move_deal":
+                emit(self.move_deal(id=kwargs.get("id", ""), to_stage=kwargs.get("to_stage", "")))
+            elif command == "update_deal":
+                amt = float(kwargs["amount"]) if "amount" in kwargs else None
+                emit(self.update_deal(id=kwargs.get("id", ""), amount=amt, close_date=kwargs.get("close_date")))
+            elif command == "create_deal":
+                amt = float(kwargs["amount"]) if "amount" in kwargs else None
+                emit(self.create_deal(title=kwargs.get("title", ""), amount=amt, pipeline=kwargs.get("pipeline")))
+            elif command == "add_deal_note":
+                emit(self.add_deal_note(id=kwargs.get("id", ""), note=kwargs.get("note", "")))
+            elif command == "mark_deal_won":
+                emit(self.mark_deal_won(id=kwargs.get("id", "")))
+            elif command == "mark_deal_lost":
+                emit(self.mark_deal_lost(id=kwargs.get("id", ""), reason=kwargs.get("reason", "")))
             else:
                 emit_error(f"Comando desconhecido: {command}", code="unknown_command")
+        except NotImplementedError as e:
+            emit({"error": "not_supported", "message": str(e)})
         except RuntimeError as e:
             emit_error(str(e))
         except Exception as e:

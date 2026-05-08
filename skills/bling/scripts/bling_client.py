@@ -7,6 +7,8 @@ import os
 import sys
 import time
 
+import json as _json
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "_lib"))
 from base import BaseERPClient, http_request, emit, emit_error, now_iso, make_list_response
 
@@ -159,6 +161,54 @@ class BlingClient(BaseERPClient):
             })
         total = len(items)
         return make_list_response(items, page=page, total_count=total)
+
+    def _post(self, path, body: dict):
+        self._ensure_token()
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("POST", url, headers=self._headers(),
+                            body=_json.dumps(body).encode())
+
+    def pay_payable(self, id: str) -> dict:
+        from datetime import date
+        today = date.today().isoformat()
+        raw = self._post(f"contas-pagar/{id}/baixas", {
+            "data": today, "valor": 0,  # valor 0 = baixa total
+        })
+        return {"success": True, "action": "pay_payable", "id": id,
+                "before": {"status": "pending"}, "after": {"status": "paid", "paid_at": today}, "raw": raw}
+
+    def mark_received(self, id: str) -> dict:
+        from datetime import date
+        today = date.today().isoformat()
+        raw = self._post(f"contas-receber/{id}/baixas", {
+            "data": today, "valor": 0,
+        })
+        return {"success": True, "action": "mark_received", "id": id,
+                "before": {"status": "pending"}, "after": {"status": "received", "received_at": today}, "raw": raw}
+
+    def create_payable(self, amount: float, due_date: str, supplier: str, **kwargs) -> dict:
+        body = {
+            "valor": amount,
+            "dataVencimento": due_date,
+            "fornecedor": {"nome": supplier},
+        }
+        if kwargs.get("description"):
+            body["historico"] = kwargs["description"]
+        raw = self._post("contas-pagar", body)
+        new_id = raw.get("data", {}).get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_payable", "id": str(new_id), "raw": raw}
+
+    def create_receivable(self, amount: float, due_date: str, customer: str, **kwargs) -> dict:
+        body = {
+            "valor": amount,
+            "dataVencimento": due_date,
+            "contato": {"nome": customer},
+        }
+        if kwargs.get("description"):
+            body["historico"] = kwargs["description"]
+        raw = self._post("contas-receber", body)
+        new_id = raw.get("data", {}).get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_receivable", "id": str(new_id), "raw": raw}
 
     def company_info(self):
         try:

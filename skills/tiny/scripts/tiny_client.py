@@ -77,6 +77,26 @@ class TinyClient(BaseERPClient):
         total = int(data.get("numero_paginas", 1) or 1)
         return make_list_response(items, page=page, total_pages=total, total_count=len(items))
 
+    def pay_payable(self, id: str) -> dict:
+        return {"error": "not_supported",
+                "message": "Tiny v2 nao suporta baixa de contas a pagar via API. Faca manualmente em app.tiny.com.br."}
+
+    def mark_received(self, id: str) -> dict:
+        return {"error": "not_supported",
+                "message": "Tiny v2 nao suporta baixa de contas a receber via API. Faca manualmente em app.tiny.com.br."}
+
+    def create_payable(self, amount: float, due_date: str, supplier: str, **kwargs) -> dict:
+        return {"error": "not_supported",
+                "message": "Tiny v2 nao suporta criacao de contas a pagar via API. Faca manualmente em app.tiny.com.br."}
+
+    def create_receivable(self, amount: float, due_date: str, customer: str, **kwargs) -> dict:
+        return {"error": "not_supported",
+                "message": "Tiny v2 nao suporta criacao de contas a receber via API. Faca manualmente em app.tiny.com.br."}
+
+    def cancel_payable(self, id: str) -> dict:
+        return {"error": "not_supported",
+                "message": "Tiny v2 nao suporta exclusao de contas via API. Faca manualmente em app.tiny.com.br."}
+
     def company_info(self):
         try:
             data = self._get("info.php")
