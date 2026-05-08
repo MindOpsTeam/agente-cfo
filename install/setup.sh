@@ -64,7 +64,7 @@ step() {
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║         Agente CFO — Instalador v1.1             ║${NC}"
+echo -e "${CYAN}║         Agente CFO — Instalador v1.2             ║${NC}"
 echo -e "${CYAN}║   CFO virtual para PME brasileira via Omie+WA    ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -78,7 +78,7 @@ chmod 700 "${STATE_DIR}/memory"
 # ─────────────────────────────────────────────────────────────────────────────
 step "1/13 — Verificando dependências"
 
-# ── Bug 1: Node check ≥22.12 + auto-install via NodeSource ───────────────────
+# ── Node check ≥22.12 + auto-install via NodeSource ──────────────────────────
 # OpenClaw 2026.5+ requer Node v22.12+. Node 18/20 causa hard error na inicialização.
 _install_node22() {
     info "Instalando Node 22 LTS via NodeSource..."
@@ -148,8 +148,6 @@ if command -v openclaw &>/dev/null; then
     _OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "desconhecida")
     _CRON_FLAGS_OK=1
 
-    # Bug 2: grep -qF "$_flag" interpretava "--no-deliver" como opção do grep.
-    # Adicionado "--" para tratar qualquer $_flag como pattern puro.
     for _flag in "--no-deliver" "--light-context" "--session" "--json"; do
         if echo "$_CRON_HELP" | grep -qF -- "$_flag"; then
             ok "openclaw cron add ${_flag}: suportado"
@@ -228,42 +226,6 @@ ask_choice() {
 ask_choice "CFO_ERP_NAME" "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo" "omie"
 ask_choice "CFO_CRM_NAME" "Quer conectar um CRM?" "hubspot / rd-station / piperun / nenhum" "nenhum"
 
-# Instalar skill ERP (se nao for omie, que e instalada no PASSO 9)
-if [[ "$CFO_ERP_NAME" != "omie" ]]; then
-    info "Instalando skill $CFO_ERP_NAME do monorepo..."
-    ERP_SKILL_DEST="${HOME}/.openclaw/workspace/skills/$CFO_ERP_NAME"
-    if [[ ! -d "$ERP_SKILL_DEST" ]]; then
-        git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" /tmp/agente-cfo-erp-clone 2>/dev/null || \
-            fail "Falha ao clonar $SKILL_REPO para skill ERP."
-        cd /tmp/agente-cfo-erp-clone
-        git sparse-checkout set "skills/$CFO_ERP_NAME" "skills/_lib"
-        cp -r "skills/$CFO_ERP_NAME" "$ERP_SKILL_DEST"
-        mkdir -p "${HOME}/.openclaw/workspace/skills/_lib"
-        cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/"
-        cd / && rm -rf /tmp/agente-cfo-erp-clone
-    fi
-    chmod +x "$ERP_SKILL_DEST/scripts/"*.sh
-    bash "$ERP_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do ERP falhou — configure manualmente."
-fi
-
-# Instalar skill CRM se escolhida
-if [[ "$CFO_CRM_NAME" != "nenhum" ]]; then
-    info "Instalando skill CRM $CFO_CRM_NAME..."
-    CRM_SKILL_DEST="${HOME}/.openclaw/workspace/skills/$CFO_CRM_NAME"
-    if [[ ! -d "$CRM_SKILL_DEST" ]]; then
-        git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" /tmp/agente-cfo-crm-clone 2>/dev/null || \
-            fail "Falha ao clonar $SKILL_REPO para skill CRM."
-        cd /tmp/agente-cfo-crm-clone
-        git sparse-checkout set "skills/$CFO_CRM_NAME" "skills/_lib"
-        cp -r "skills/$CFO_CRM_NAME" "$CRM_SKILL_DEST"
-        mkdir -p "${HOME}/.openclaw/workspace/skills/_lib"
-        cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/"
-        cd / && rm -rf /tmp/agente-cfo-crm-clone
-    fi
-    chmod +x "$CRM_SKILL_DEST/scripts/"*.sh
-    bash "$CRM_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do CRM falhou — configure manualmente."
-fi
-
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 4: PANEL_BASE_URL e PANEL_TOKEN
 # ─────────────────────────────────────────────────────────────────────────────
@@ -314,12 +276,9 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 step "5b/13 — Configurando OpenClaw"
 
-# Bug 4: sem gateway.mode=local o gateway aborta com
-#   "Gateway start blocked: existing config is missing gateway.mode."
 openclaw config set gateway.mode local 2>&1 | grep -v "^Config overwrite" || true
 ok "gateway.mode=local configurado."
 
-# Bug 6+7: configurar provider Anthropic + secrets.providers em um único config patch
 info "Configurando provider Anthropic no OpenClaw..."
 _ANTHROPIC_PATCH=$(mktemp /tmp/anthropic-cfg-XXXXXX.json5)
 cat > "$_ANTHROPIC_PATCH" <<'ANTEOF'
@@ -368,7 +327,6 @@ export ANTHROPIC_API_KEY
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 6: Instalar wacli
 # ─────────────────────────────────────────────────────────────────────────────
-# Bug 8: wacli não vem com OpenClaw. Em VPS limpa: "command not found".
 step "6/13 — Instalando wacli"
 
 if command -v wacli &>/dev/null; then
@@ -397,11 +355,9 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 step "7/13 — Pareamento WhatsApp"
 
-# Bug 12b: "connected" casa "disconnected" com grep -qi. Usar check estrito.
 _wacli_connected() {
     local _out
     _out=$(wacli doctor 2>&1 || true)
-    # connected ou locked_by_other_process = bom (wacli-sync tem o lock)
     if echo "$_out" | grep -qE 'AUTHENTICATED[[:space:]]+true|"authenticated":true'; then
         if echo "$_out" | grep -qE 'CONNECTION_STATE[[:space:]]+(connected|locked_by_other_process)|"connected":true'; then
             return 0
@@ -430,9 +386,56 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 8: Cloudflare Tunnel + systemd units
+# PASSO 7b: Detectar JID real do WhatsApp (bug 6b fix)
+# Após pareamento, extraímos o JID do wacli doctor para evitar o problema
+# do "9 BR extra" ao usar CFO_WHATSAPP_TO em formato E.164.
 # ─────────────────────────────────────────────────────────────────────────────
-step "8/13 — Cloudflare Tunnel + systemd"
+info "Detectando JID WhatsApp via wacli doctor..."
+WA_JID=$(wacli doctor 2>/dev/null | awk '/^LINKED_JID/ {print $NF; exit}' || echo "")
+if [[ -n "$WA_JID" && "$WA_JID" == *"@"* ]]; then
+    CFO_WHATSAPP_TO="$WA_JID"
+    ok "WhatsApp JID detectado: $CFO_WHATSAPP_TO"
+else
+    warn "Não foi possível detectar JID via wacli doctor. Usando CFO_WHATSAPP_TO=$CFO_WHATSAPP_TO"
+    warn "Se wacli_inbound não receber mensagens, verifique 'wacli doctor' e corrija CFO_WHATSAPP_TO no .env"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 8: Persistir .env (ANTES do gateway systemd — bug 1 fix)
+# O gateway systemd usa EnvironmentFile=~/.agente-cfo/.env.
+# Se o .env não existir quando o gateway tenta subir, o systemd falha com
+# "Failed to load environment files: No such file or directory".
+# ─────────────────────────────────────────────────────────────────────────────
+step "8/13 — Persistindo configuração"
+
+mkdir -p "$(dirname "$ENV_FILE")"
+
+cat > "$ENV_FILE" << EOF
+# Agente CFO — gerado por setup.sh em $(date '+%Y-%m-%d %H:%M:%S')
+OMIE_APP_KEY=${OMIE_APP_KEY}
+OMIE_APP_SECRET=${OMIE_APP_SECRET}
+CFO_WHATSAPP_TO=${CFO_WHATSAPP_TO}
+ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+LLM_BUDGET_BRL=${LLM_BUDGET_BRL}
+PANEL_BASE_URL=${PANEL_BASE_URL}
+PANEL_TOKEN=${PANEL_TOKEN}
+INGRESS_URL=
+HOOKS_TOKEN=${HOOKS_TOKEN}
+CFO_ERP_NAME=${CFO_ERP_NAME:-omie}
+CFO_CRM_NAME=${CFO_CRM_NAME:-nenhum}
+OMIE_SKILL_PATH=${HOME}/.openclaw/workspace/skills/omie
+INSTANCE_ID=
+EOF
+chmod 600 "$ENV_FILE"
+ok "Config salva em $ENV_FILE (chmod 600)."
+
+# shellcheck source=/dev/null
+source "$ENV_FILE"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 9: Cloudflare Tunnel + systemd units (bug 1 fix: .env já existe)
+# ─────────────────────────────────────────────────────────────────────────────
+step "9/13 — Cloudflare Tunnel + systemd"
 
 if ! command -v cloudflared &>/dev/null; then
     info "Instalando cloudflared..."
@@ -451,14 +454,13 @@ else
     ok "cloudflared já instalado."
 fi
 
-# Bug 3: ExecStart era "openclaw gateway start" — subcomando inexistente.
-# ExecStart correto: "openclaw gateway --port 18789 --bind loopback"
-# Bug 5: systemctl start nunca era chamado. Agora usamos --now.
 _OPENCLAW_BIN="$(command -v openclaw)"
 _CF_BIN="$(command -v cloudflared)"
+_WACLI_BIN="$(command -v wacli)"
 _USER_NAME="${USER:-root}"
+_INBOUND_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/wacli_inbound.py"
 
-# Configurar unit do gateway (recria para garantir ExecStart correto)
+# Unit do gateway OpenClaw
 cat > /etc/systemd/system/openclaw-gateway.service << EOF
 [Unit]
 Description=OpenClaw Gateway (Agente CFO)
@@ -480,7 +482,7 @@ TimeoutStartSec=90
 WantedBy=multi-user.target
 EOF
 
-# Configurar unit do tunnel
+# Unit do Cloudflare Tunnel
 cat > /etc/systemd/system/cloudflared-cfo.service << EOF
 [Unit]
 Description=Cloudflare Tunnel (Agente CFO)
@@ -497,9 +499,7 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Bug 9: wacli-sync.service — mantém WhatsApp conectado em segundo plano.
-# --idle-exit 0 desabilita saída por idle.
-_WACLI_BIN="$(command -v wacli)"
+# Unit wacli-sync — mantém sessão WhatsApp ativa em background
 cat > /etc/systemd/system/wacli-sync.service << EOF
 [Unit]
 Description=wacli WhatsApp sync (Agente CFO)
@@ -517,12 +517,13 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# wacli-inbound.service — daemon de inbound WhatsApp (polling)
-_INBOUND_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/wacli_inbound.py"
+# Unit wacli-inbound — daemon de polling de mensagens inbound (bug 2 fix)
+# Este unit estava ausente no setup.sh anterior, causando falha no doctor
+# ("wacli-inbound listener: inativo") e nenhuma mensagem sendo processada.
 cat > /etc/systemd/system/wacli-inbound.service << EOF
 [Unit]
-Description=wacli WhatsApp Inbound Listener (Agente CFO)
-After=network.target wacli-sync.service openclaw-gateway.service
+Description=Marcos WhatsApp Inbound Listener (Agente CFO)
+After=network.target openclaw-gateway.service wacli-sync.service
 
 [Service]
 Type=simple
@@ -531,15 +532,16 @@ Environment=HOME=${HOME}
 EnvironmentFile=${ENV_FILE}
 ExecStart=/usr/bin/python3 ${_INBOUND_SCRIPT}
 Restart=always
-RestartSec=10
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound."
 
-# Iniciar gateway e aguardar responder (Bug 5)
+# Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
 
 info "Aguardando OpenClaw Gateway subir na porta 18789 (até 60s)..."
@@ -548,7 +550,7 @@ for _i in $(seq 1 30); do
     if curl -fs http://127.0.0.1:18789/__openclaw__/canvas/ >/dev/null 2>&1 || \
        ss -tlnp 2>/dev/null | grep -q ':18789'; then
         _GW_OK=1
-        ok "Gateway pronto (~$(((_i) * 2))s)."
+        ok "Gateway pronto (~$((_i * 2))s)."
         break
     fi
     sleep 2
@@ -573,11 +575,7 @@ ok "OpenClaw hooks configurados (token: ${HOOKS_TOKEN:0:8}...)."
 systemctl enable --now wacli-sync 2>/dev/null || warn "wacli-sync: enable falhou (não crítico)."
 ok "wacli-sync iniciado (mantém WhatsApp conectado)."
 
-# Iniciar wacli-inbound (listener de mensagens)
-systemctl enable --now wacli-inbound 2>/dev/null || warn "wacli-inbound enable falhou"
-ok "wacli-inbound.service iniciado."
-
-# Iniciar tunnel e capturar URL
+# Iniciar Cloudflare Tunnel e capturar URL
 if [[ -n "${INGRESS_URL:-}" ]]; then
     ok "INGRESS_URL já definida: $INGRESS_URL — pulando tunnel."
 else
@@ -613,34 +611,78 @@ Verifique: journalctl -u cloudflared-cfo -n 50
 O Tunnel exige saída TCP para *.cloudflare.com na porta 443."
         fi
         ok "Tunnel ativo (inline): $INGRESS_URL"
-        # Atualizar unit para refletir tunnel ativo e reiniciar via systemd
         systemctl start cloudflared-cfo 2>/dev/null || true
     else
         ok "Tunnel ativo (systemd): $INGRESS_URL"
     fi
 fi
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PASSO 9: Instalar skill omie
-# ─────────────────────────────────────────────────────────────────────────────
-step "9/13 — Skill omie"
+# Atualizar INGRESS_URL no .env agora que temos a URL real
+grep -v "^INGRESS_URL=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
+echo "INGRESS_URL=${INGRESS_URL}" >> "$ENV_FILE"
+chmod 600 "$ENV_FILE"
+ok "INGRESS_URL persistida no .env."
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 10: Instalar skills do monorepo (omie + ERP/CRM escolhidos)
+# (bug 3 fix): omie e demais skills ERP/CRM vêm do monorepo, não do ClawHub.
+# O ClawHub tem v1.0.3 (interface antiga sem get_balance/list_payables/etc).
+# ─────────────────────────────────────────────────────────────────────────────
+step "10/13 — Skills ERP/CRM (monorepo)"
+
+_install_skill_from_repo() {
+    local skill_name="$1"
+    local dest="${HOME}/.openclaw/workspace/skills/${skill_name}"
+
+    if [[ -d "$dest" && -f "$dest/SKILL.md" ]]; then
+        ok "Skill ${skill_name} já instalada."
+        return
+    fi
+
+    info "Clonando skill '${skill_name}' do monorepo..."
+    local clone_dir="/tmp/agente-cfo-skill-${skill_name}-clone"
+    rm -rf "$clone_dir"
+    git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$clone_dir" 2>/dev/null || \
+        fail "Falha ao clonar $SKILL_REPO para skill ${skill_name}."
+    cd "$clone_dir"
+    git sparse-checkout set "skills/${skill_name}" "skills/_lib"
+    mkdir -p "${HOME}/.openclaw/workspace/skills"
+    cp -r "skills/${skill_name}" "$dest"
+    # Instalar/atualizar _lib (BaseERPClient/BaseCRMClient)
+    mkdir -p "${HOME}/.openclaw/workspace/skills/_lib"
+    cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/"
+    cd / && rm -rf "$clone_dir"
+
+    chmod +x "$dest/scripts/"*.sh 2>/dev/null || true
+    ok "Skill ${skill_name} instalada de ${SKILL_REPO}."
+}
+
+# Sempre instalar omie do monorepo (versão com get_balance/list_payables/etc)
+_install_skill_from_repo "omie"
+
+# Instalar requirements.txt se existir
 OMIE_DEST="${HOME}/.openclaw/workspace/skills/omie"
-if [[ -d "$OMIE_DEST" ]]; then
-    ok "Skill omie já instalada."
-else
-    openclaw skills install omie 2>&1 || \
-        fail "Falha ao instalar skill omie."
-    ok "Skill omie instalada."
-fi
-
 [[ -f "$OMIE_DEST/requirements.txt" ]] && \
     pip3 install -r "$OMIE_DEST/requirements.txt" -q 2>/dev/null || true
 
+# Instalar skill ERP escolhida (se diferente de omie)
+if [[ "${CFO_ERP_NAME:-omie}" != "omie" ]]; then
+    _install_skill_from_repo "${CFO_ERP_NAME}"
+    ERP_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_ERP_NAME}"
+    bash "$ERP_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do ERP falhou — configure manualmente."
+fi
+
+# Instalar skill CRM escolhida
+if [[ "${CFO_CRM_NAME:-nenhum}" != "nenhum" ]]; then
+    _install_skill_from_repo "${CFO_CRM_NAME}"
+    CRM_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_CRM_NAME}"
+    bash "$CRM_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do CRM falhou — configure manualmente."
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 10: Instalar skill agente-cfo
+# PASSO 11: Instalar skill agente-cfo
 # ─────────────────────────────────────────────────────────────────────────────
-step "10/13 — Skill agente-cfo"
+step "11/13 — Skill agente-cfo"
 
 if [[ -d "$SKILL_DEST" && -f "$SKILL_DEST/SKILL.md" ]]; then
     ok "Skill agente-cfo já instalada. Atualizando..."
@@ -659,34 +701,10 @@ fi
 
 chmod +x "$SKILL_DEST/scripts/"*.sh
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PASSO 11: Persistir env
-# ─────────────────────────────────────────────────────────────────────────────
-step "11/13 — Persistindo configuração"
-
-mkdir -p "$(dirname "$ENV_FILE")"
-
-cat > "$ENV_FILE" << EOF
-# Agente CFO — gerado por setup.sh em $(date '+%Y-%m-%d %H:%M:%S')
-OMIE_APP_KEY=${OMIE_APP_KEY}
-OMIE_APP_SECRET=${OMIE_APP_SECRET}
-CFO_WHATSAPP_TO=${CFO_WHATSAPP_TO}
-ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-LLM_BUDGET_BRL=${LLM_BUDGET_BRL}
-PANEL_BASE_URL=${PANEL_BASE_URL}
-PANEL_TOKEN=${PANEL_TOKEN}
-INGRESS_URL=${INGRESS_URL:-}
-HOOKS_TOKEN=${HOOKS_TOKEN}
-CFO_ERP_NAME=${CFO_ERP_NAME:-omie}
-CFO_CRM_NAME=${CFO_CRM_NAME:-nenhum}
-OMIE_SKILL_PATH=${HOME}/.openclaw/workspace/skills/omie
-INSTANCE_ID=
-EOF
-chmod 600 "$ENV_FILE"
-ok "Config salva em $ENV_FILE (chmod 600)."
-
-# shellcheck source=/dev/null
-source "$ENV_FILE"
+# Agora que agente-cfo está instalada, podemos iniciar o wacli-inbound (bug 2 fix)
+# O script wacli_inbound.py precisa existir antes de o service subir.
+systemctl enable --now wacli-inbound 2>/dev/null || warn "wacli-inbound enable falhou."
+ok "wacli-inbound.service iniciado."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
@@ -836,6 +854,7 @@ echo -e "  ${CYAN}Próximos passos:${NC}"
 echo "  • Primeiro alerta chega no WhatsApp às 07:00 de amanhã"
 echo "  • Se WhatsApp desconectar: bash ${SKILL_DEST}/scripts/repare.sh"
 echo "  • Diagnóstico: bash ${SKILL_DEST}/scripts/doctor.sh"
+echo "  • Logs inbound: ${LOG_DIR}/wacli-inbound.log"
 echo "  • Logs: $LOG_DIR"
 echo ""
 
