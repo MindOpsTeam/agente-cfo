@@ -78,17 +78,66 @@ chmod 700 "${STATE_DIR}/memory"
 # ─────────────────────────────────────────────────────────────────────────────
 step "1/12 — Verificando dependências"
 
+# Verificar/instalar Node 22+ (obrigatório pelo OpenClaw 2026.5+)
+_ensure_node22() {
+    if command -v node &>/dev/null; then
+        local major minor
+        major=$(node --version | tr -d 'v' | cut -d. -f1)
+        minor=$(node --version | tr -d 'v' | cut -d. -f2)
+        # Aceita 22.12+ ou 23+
+        if [[ "$major" -gt 22 ]] || ( [[ "$major" -eq 22 ]] && [[ "$minor" -ge 12 ]] ); then
+            ok "Node.js $(node --version) — OK."
+            return
+        fi
+        warn "Node.js $(node --version) encontrado, mas OpenClaw requer v22.12+."
+    else
+        warn "Node.js não encontrado."
+    fi
+
+    if [[ "${CI:-}" == "true" ]] || [[ "${NONINTERACTIVE:-}" == "1" ]]; then
+        _install_node22
+        return
+    fi
+
+    local ans
+    read -rp "$(echo -e "${CYAN}?${NC} Posso instalar Node 22 LTS via apt? (S/n): ")" ans
+    ans="${ans:-S}"
+    if [[ "$ans" =~ ^[Ss]$ ]]; then
+        _install_node22
+    else
+        fail "Node.js v22.12+ é obrigatório (OpenClaw exige).
+Instale manualmente:
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y nodejs
+Depois execute este script novamente."
+    fi
+}
+
+_install_node22() {
+    info "Instalando Node 22 LTS via NodeSource..."
+    command -v curl &>/dev/null || apt-get install -y curl -q
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>&1 | tail -5
+    apt-get install -y nodejs 2>&1 | tail -5
+    local major minor
+    major=$(node --version | tr -d 'v' | cut -d. -f1)
+    minor=$(node --version | tr -d 'v' | cut -d. -f2)
+    if [[ "$major" -lt 22 ]] || ( [[ "$major" -eq 22 ]] && [[ "$minor" -lt 12 ]] ); then
+        fail "Instalação do Node falhou. Instale manualmente e execute o setup de novo."
+    fi
+    ok "Node.js $(node --version) instalado."
+}
+
+_ensure_node22
+
 MISSING=()
-for bin in node npm python3 curl jq git openssl; do
+for bin in npm python3 curl jq git openssl; do
     command -v "$bin" &>/dev/null && ok "$bin ok" || MISSING+=("$bin")
 done
 
 [[ ${#MISSING[@]} -gt 0 ]] && fail "Dependências ausentes: ${MISSING[*]}
 Instale com:
-  apt-get update && apt-get install -y nodejs npm python3 curl jq git openssl"
+  apt-get update && apt-get install -y npm python3 curl jq git openssl"
 
-NODE_VER=$(node --version | tr -d 'v' | cut -d. -f1)
-[[ "$NODE_VER" -lt 18 ]] && fail "Node.js >= 18 obrigatório (encontrado: $(node --version))"
 ok "Dependências OK."
 
 # ── Pre-flight 1b: validar flags do openclaw cron add ────────────────────────
@@ -102,7 +151,7 @@ if command -v openclaw &>/dev/null; then
     _CRON_FLAGS_OK=1
 
     for _flag in "--no-deliver" "--light-context" "--session" "--json"; do
-        if echo "$_CRON_HELP" | grep -qF "$_flag"; then
+        if echo "$_CRON_HELP" | grep -qF -- "$_flag"; then
             ok "openclaw cron add ${_flag}: suportado"
         else
             warn "OpenClaw ${_OC_VERSION} não suporta a flag '${_flag}' em 'cron add'."
