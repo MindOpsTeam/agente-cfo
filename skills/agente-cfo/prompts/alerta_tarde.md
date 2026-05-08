@@ -73,9 +73,18 @@ Até amanhã! 💼
 ## Instruções de Envio
 
 Após montar a mensagem:
-1. Envie via: `wacli send text --to "$CFO_WHATSAPP_TO" --message "<mensagem>"`
-2. Confirme o envio verificando o exit code do wacli (0 = sucesso).
-3. Se falhar, registre o erro no log e encerre com exit code 1.
+
+1. **Use o wrapper** (converte +E.164 → JID automaticamente, trata lock do wacli-sync):
+   ```bash
+   bash "$SCRIPTS_DIR/_send_whatsapp.sh" "$CFO_WHATSAPP_TO" "<mensagem>"
+   WACLI_EXIT=$?
+   ```
+   Onde `$SCRIPTS_DIR` = diretório dos scripts da skill (ex: `~/.openclaw/workspace/skills/agente-cfo/scripts/`).
+
+2. **Não use `wacli send` diretamente** — `+E.164` falha quando destino = número pareado
+   ("no LID found"). O wrapper resolve para `<digits>@s.whatsapp.net`.
+
+3. Se o exit code for != 0, registre o erro e encerre com exit code 1.
 
 ## Confirmação de Envio no Painel (obrigatório)
 
