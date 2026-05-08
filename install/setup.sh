@@ -208,6 +208,63 @@ ask "LLM_BUDGET_BRL"    "Orçamento mensal LLM em BRL" "50"
     warn "CFO_WHATSAPP_TO '$CFO_WHATSAPP_TO' — verifique o formato E.164."
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PASSO 3b: Escolher ERP e CRM
+# ─────────────────────────────────────────────────────────────────────────────
+step "3b/13 — Escolher ERP e CRM"
+
+ask_choice() {
+    local var_name="$1" description="$2" options="$3" default="$4"
+    if [[ -n "${!var_name:-}" ]]; then
+        ok "$description: ${!var_name}"
+        return
+    fi
+    echo ""
+    info "$description"
+    info "Opcoes: $options"
+    read -rp "$(echo -e "${CYAN}?${NC} Escolha (vazio = $default): ")" _choice
+    export "$var_name"="${_choice:-$default}"
+}
+
+ask_choice "CFO_ERP_NAME" "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo" "omie"
+ask_choice "CFO_CRM_NAME" "Quer conectar um CRM?" "hubspot / rd-station / piperun / nenhum" "nenhum"
+
+# Instalar skill ERP (se nao for omie, que e instalada no PASSO 9)
+if [[ "$CFO_ERP_NAME" != "omie" ]]; then
+    info "Instalando skill $CFO_ERP_NAME do monorepo..."
+    ERP_SKILL_DEST="${HOME}/.openclaw/workspace/skills/$CFO_ERP_NAME"
+    if [[ ! -d "$ERP_SKILL_DEST" ]]; then
+        git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" /tmp/agente-cfo-erp-clone 2>/dev/null || \
+            fail "Falha ao clonar $SKILL_REPO para skill ERP."
+        cd /tmp/agente-cfo-erp-clone
+        git sparse-checkout set "skills/$CFO_ERP_NAME" "skills/_lib"
+        cp -r "skills/$CFO_ERP_NAME" "$ERP_SKILL_DEST"
+        mkdir -p "${HOME}/.openclaw/workspace/skills/_lib"
+        cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/"
+        cd / && rm -rf /tmp/agente-cfo-erp-clone
+    fi
+    chmod +x "$ERP_SKILL_DEST/scripts/"*.sh
+    bash "$ERP_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do ERP falhou — configure manualmente."
+fi
+
+# Instalar skill CRM se escolhida
+if [[ "$CFO_CRM_NAME" != "nenhum" ]]; then
+    info "Instalando skill CRM $CFO_CRM_NAME..."
+    CRM_SKILL_DEST="${HOME}/.openclaw/workspace/skills/$CFO_CRM_NAME"
+    if [[ ! -d "$CRM_SKILL_DEST" ]]; then
+        git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" /tmp/agente-cfo-crm-clone 2>/dev/null || \
+            fail "Falha ao clonar $SKILL_REPO para skill CRM."
+        cd /tmp/agente-cfo-crm-clone
+        git sparse-checkout set "skills/$CFO_CRM_NAME" "skills/_lib"
+        cp -r "skills/$CFO_CRM_NAME" "$CRM_SKILL_DEST"
+        mkdir -p "${HOME}/.openclaw/workspace/skills/_lib"
+        cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/"
+        cd / && rm -rf /tmp/agente-cfo-crm-clone
+    fi
+    chmod +x "$CRM_SKILL_DEST/scripts/"*.sh
+    bash "$CRM_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do CRM falhou — configure manualmente."
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # PASSO 4: PANEL_BASE_URL e PANEL_TOKEN
 # ─────────────────────────────────────────────────────────────────────────────
 step "4/13 — Painel (Supabase do cliente)"
@@ -596,6 +653,8 @@ PANEL_BASE_URL=${PANEL_BASE_URL}
 PANEL_TOKEN=${PANEL_TOKEN}
 INGRESS_URL=${INGRESS_URL:-}
 HOOKS_TOKEN=${HOOKS_TOKEN}
+CFO_ERP_NAME=${CFO_ERP_NAME:-omie}
+CFO_CRM_NAME=${CFO_CRM_NAME:-nenhum}
 OMIE_SKILL_PATH=${HOME}/.openclaw/workspace/skills/omie
 INSTANCE_ID=
 EOF
