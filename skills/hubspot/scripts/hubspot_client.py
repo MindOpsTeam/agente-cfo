@@ -5,6 +5,8 @@ import json
 import os
 import sys
 
+import json as _json
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "_lib"))
 from base import BaseCRMClient, http_request, emit, emit_error, now_iso, make_deal_item, make_list_response
 
@@ -96,6 +98,64 @@ class HubSpotClient(BaseCRMClient):
             ))
         total = data.get("total", len(items)) if isinstance(data, dict) else len(items)
         return make_list_response(items, page=page, total_count=total)
+
+    def _patch(self, path, body: dict):
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("PATCH", url, headers=self.headers,
+                            body=_json.dumps(body).encode())
+
+    def _post_json(self, path, body: dict):
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("POST", url, headers=self.headers,
+                            body=_json.dumps(body).encode())
+
+    def move_deal(self, id: str, to_stage: str) -> dict:
+        raw = self._patch(f"crm/v3/objects/deals/{id}", {"properties": {"dealstage": to_stage}})
+        return {"success": True, "action": "move_deal", "id": id,
+                "after": {"stage": to_stage}, "raw": raw}
+
+    def update_deal(self, id: str, amount: float | None = None, close_date: str | None = None) -> dict:
+        props: dict = {}
+        if amount is not None:
+            props["amount"] = str(amount)
+        if close_date:
+            props["closedate"] = close_date
+        raw = self._patch(f"crm/v3/objects/deals/{id}", {"properties": props})
+        return {"success": True, "action": "update_deal", "id": id, "after": props, "raw": raw}
+
+    def create_deal(self, title: str, amount: float | None = None, pipeline: str | None = None) -> dict:
+        props: dict = {"dealname": title}
+        if amount is not None:
+            props["amount"] = str(amount)
+        if pipeline:
+            props["pipeline"] = pipeline
+        raw = self._post_json("crm/v3/objects/deals", {"properties": props})
+        new_id = raw.get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_deal", "id": str(new_id), "raw": raw}
+
+    def add_deal_note(self, id: str, note: str) -> dict:
+        note_body = {
+            "properties": {"hs_note_body": note, "hs_timestamp": now_iso()},
+            "associations": [{
+                "to": {"id": int(id)},
+                "types": [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": 214}],
+            }],
+        }
+        raw = self._post_json("crm/v3/objects/notes", note_body)
+        return {"success": True, "action": "add_deal_note", "id": id, "raw": raw}
+
+    def mark_deal_won(self, id: str) -> dict:
+        raw = self._patch(f"crm/v3/objects/deals/{id}", {"properties": {"dealstage": "closedwon"}})
+        return {"success": True, "action": "mark_deal_won", "id": id,
+                "after": {"status": "won"}, "raw": raw}
+
+    def mark_deal_lost(self, id: str, reason: str = "") -> dict:
+        props: dict = {"dealstage": "closedlost"}
+        if reason:
+            props["closed_lost_reason"] = reason
+        raw = self._patch(f"crm/v3/objects/deals/{id}", {"properties": props})
+        return {"success": True, "action": "mark_deal_lost", "id": id,
+                "after": {"status": "lost", "reason": reason}, "raw": raw}
 
     def company_info(self):
         try:

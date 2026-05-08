@@ -4,6 +4,8 @@
 import os
 import sys
 
+import json as _json
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "_lib"))
 from base import BaseCRMClient, http_request, emit, emit_error, now_iso, make_deal_item, make_list_response
 
@@ -55,6 +57,53 @@ class RDStationClient(BaseCRMClient):
         total = data.get("total", len(items)) if isinstance(data, dict) else len(items)
         total_pages = max(1, -(-total // limit))
         return make_list_response(items, page=page, total_pages=total_pages, total_count=total)
+
+    def _put(self, path, body: dict):
+        url = f"{self.base_url}/{path}?token={self.token}"
+        return http_request("PUT", url, headers={"Content-Type": "application/json"},
+                            body=_json.dumps(body).encode())
+
+    def _post_json(self, path, body: dict):
+        url = f"{self.base_url}/{path}?token={self.token}"
+        return http_request("POST", url, headers={"Content-Type": "application/json"},
+                            body=_json.dumps(body).encode())
+
+    def move_deal(self, id: str, to_stage: str) -> dict:
+        raw = self._put(f"deals/{id}", {"deal_stage_id": to_stage})
+        return {"success": True, "action": "move_deal", "id": id,
+                "after": {"stage_id": to_stage}, "raw": raw}
+
+    def update_deal(self, id: str, amount: float | None = None, close_date: str | None = None) -> dict:
+        body: dict = {}
+        if amount is not None:
+            body["amount_total"] = amount
+        if close_date:
+            body["close_at"] = close_date
+        raw = self._put(f"deals/{id}", body)
+        return {"success": True, "action": "update_deal", "id": id, "after": body, "raw": raw}
+
+    def create_deal(self, title: str, amount: float | None = None, pipeline: str | None = None) -> dict:
+        body: dict = {"name": title}
+        if amount is not None:
+            body["amount_total"] = amount
+        if pipeline:
+            body["deal_pipeline_id"] = pipeline
+        raw = self._post_json("deals", body)
+        new_id = raw.get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_deal", "id": str(new_id), "raw": raw}
+
+    def mark_deal_won(self, id: str) -> dict:
+        raw = self._put(f"deals/{id}", {"win": True})
+        return {"success": True, "action": "mark_deal_won", "id": id,
+                "after": {"status": "won"}, "raw": raw}
+
+    def mark_deal_lost(self, id: str, reason: str = "") -> dict:
+        body: dict = {"lost": True}
+        if reason:
+            body["lost_reason"] = reason
+        raw = self._put(f"deals/{id}", body)
+        return {"success": True, "action": "mark_deal_lost", "id": id,
+                "after": {"status": "lost", "reason": reason}, "raw": raw}
 
     def company_info(self):
         try:
