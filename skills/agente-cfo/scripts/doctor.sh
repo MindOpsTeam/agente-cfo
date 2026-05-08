@@ -121,11 +121,27 @@ else
 fi
 
 # ── 6. wacli-inbound listener ────────────────────────────────────────────────
-echo "[6/6] Verificando wacli-inbound..."
+echo "[6/7] Verificando wacli-inbound..."
 if systemctl is-active --quiet wacli-inbound 2>/dev/null; then
     register "wacli-inbound listener" "$PASS" "ativo (escutando mensagens do dono)"
 else
     register "wacli-inbound listener" "$WARN" "inativo — systemctl start wacli-inbound"
+fi
+
+# ── 7. cfo-proactive watcher ─────────────────────────────────────────────────
+echo "[7/7] Verificando cfo-proactive watcher..."
+if systemctl is-active --quiet cfo-proactive 2>/dev/null; then
+    # Verificar quando foi o último ciclo (última linha do log)
+    _PROACTIVE_LOG="${HOME}/.agente-cfo/logs/proactive.log"
+    _LAST_CYCLE=""
+    if [[ -f "$_PROACTIVE_LOG" ]]; then
+        _LAST_CYCLE=$(grep "Início do ciclo\|ciclo concluído\|started" "$_PROACTIVE_LOG" 2>/dev/null | tail -1 | cut -c1-19 || echo "")
+    fi
+    _MSG="ativo"
+    [[ -n "$_LAST_CYCLE" ]] && _MSG="ativo — último ciclo: ${_LAST_CYCLE}"
+    register "Proactive Watcher (cfo-proactive)" "$PASS" "$_MSG"
+else
+    register "Proactive Watcher (cfo-proactive)" "$WARN" "inativo — systemctl start cfo-proactive"
 fi
 
 # ── Tabela de resultado ───────────────────────────────────────────────────────
@@ -163,6 +179,7 @@ for i in "${!CHECK_NAMES[@]}"; do
         *instance-register*)   COMPONENTS["panel_connect"]="${status,,}" ;;
         */hooks/agent*)        COMPONENTS["hooks_agent"]="${status,,}" ;;
         *Webhook*legado*)      COMPONENTS["webhook_legacy"]="${status,,}" ;;
+        *Proactive*)           COMPONENTS["proactive_watcher"]="${status,,}" ;;
     esac
 done
 
@@ -179,13 +196,14 @@ fi
 OVERALL_STR=$([ $OVERALL -eq 0 ] && echo "ok" || echo "fail")
 SEVERITY=$([ $OVERALL -eq 0 ] && echo "info" || echo "critical")
 
-PAYLOAD=$(printf '{"overall":"%s","components":{"whatsapp":"%s","omie":"%s","panel_token":"%s","panel_connect":"%s","hooks_agent":"%s"}}' \
+PAYLOAD=$(printf '{"overall":"%s","components":{"whatsapp":"%s","omie":"%s","panel_token":"%s","panel_connect":"%s","hooks_agent":"%s","proactive_watcher":"%s"}}' \
     "$OVERALL_STR" \
     "${COMPONENTS[whatsapp]:-unknown}" \
     "${COMPONENTS[omie]:-unknown}" \
     "${COMPONENTS[panel_token]:-unknown}" \
     "${COMPONENTS[panel_connect]:-unknown}" \
-    "${COMPONENTS[hooks_agent]:-unknown}")
+    "${COMPONENTS[hooks_agent]:-unknown}" \
+    "${COMPONENTS[proactive_watcher]:-unknown}")
 
 _panel_event "doctor" "$SEVERITY" "$PAYLOAD"
 

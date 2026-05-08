@@ -459,6 +459,7 @@ _CF_BIN="$(command -v cloudflared)"
 _WACLI_BIN="$(command -v wacli)"
 _USER_NAME="${USER:-root}"
 _INBOUND_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/wacli_inbound.py"
+_PROACTIVE_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/cfo_proactive_watcher.py"
 
 # Unit do gateway OpenClaw
 cat > /etc/systemd/system/openclaw-gateway.service << EOF
@@ -538,8 +539,30 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
+# Unit cfo-proactive — daemon de detecção de anomalias proativas (Sprint 5)
+# O script cfo_proactive_watcher.py precisa existir (instalado no PASSO 11).
+# O unit é criado agora mas iniciado APÓS o PASSO 11 (junto com wacli-inbound).
+cat > /etc/systemd/system/cfo-proactive.service << EOF
+[Unit]
+Description=Marcos Proactive Watcher (Agente CFO)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_PROACTIVE_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound."
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -706,6 +729,10 @@ chmod +x "$SKILL_DEST/scripts/"*.sh
 systemctl enable --now wacli-inbound 2>/dev/null || warn "wacli-inbound enable falhou."
 ok "wacli-inbound.service iniciado."
 
+# Iniciar proactive watcher (cfo_proactive_watcher.py já existe)
+systemctl enable --now cfo-proactive 2>/dev/null || warn "cfo-proactive enable falhou."
+ok "cfo-proactive.service iniciado (detecção de anomalias a cada ${CFO_PROACTIVE_INTERVAL_MINUTES:-30} min)."
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
 # ─────────────────────────────────────────────────────────────────────────────
@@ -854,7 +881,8 @@ echo -e "  ${CYAN}Próximos passos:${NC}"
 echo "  • Primeiro alerta chega no WhatsApp às 07:00 de amanhã"
 echo "  • Se WhatsApp desconectar: bash ${SKILL_DEST}/scripts/repare.sh"
 echo "  • Diagnóstico: bash ${SKILL_DEST}/scripts/doctor.sh"
-echo "  • Logs inbound: ${LOG_DIR}/wacli-inbound.log"
+echo "  • Logs inbound:   ${LOG_DIR}/wacli-inbound.log"
+echo "  • Logs proativo:  ${LOG_DIR}/proactive.log"
 echo "  • Logs: $LOG_DIR"
 echo ""
 
