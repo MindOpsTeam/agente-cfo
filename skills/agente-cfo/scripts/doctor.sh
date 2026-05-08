@@ -31,20 +31,19 @@ register() {
 }
 
 # ── 1. WhatsApp (wacli doctor) ────────────────────────────────────────────────
+# Bug 12b: grep -qi "connected" casava "disconnected" (substring match).
+# Fix: check estrito em AUTHENTICATED=true + CONNECTION_STATE=connected|locked_by_other_process.
+# "locked_by_other_process" = wacli-sync tem o lock = bom, está conectado.
 echo "[1/5] Verificando WhatsApp..."
-if wacli_out=$(wacli doctor --json 2>/dev/null); then
-    wa_status=$(echo "$wacli_out" | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown")
-    if [[ "$wa_status" == "ok" || "$wa_status" == "connected" ]]; then
+_wacli_out=$(wacli doctor 2>&1 || true)
+if echo "$_wacli_out" | grep -qE 'AUTHENTICATED[[:space:]]+true|"authenticated":[[:space:]]*true'; then
+    if echo "$_wacli_out" | grep -qE 'CONNECTION_STATE[[:space:]]+(connected|locked_by_other_process)|"connected":[[:space:]]*true'; then
         register "WhatsApp (wacli)" "$PASS" "conectado"
     else
-        register "WhatsApp (wacli)" "$FAIL" "status: $wa_status — execute repare.sh"
+        register "WhatsApp (wacli)" "$WARN" "autenticado mas desconectado — systemctl status wacli-sync"
     fi
 else
-    if wacli doctor 2>&1 | grep -qi "connected\|ok\|pareado\|logged"; then
-        register "WhatsApp (wacli)" "$PASS" "conectado"
-    else
-        register "WhatsApp (wacli)" "$FAIL" "wacli doctor falhou — execute repare.sh"
-    fi
+    register "WhatsApp (wacli)" "$FAIL" "não autenticado — execute repare.sh"
 fi
 
 # ── 2. Omie ERP (ping via resumo_financeiro, timeout 15s) ─────────────────────
@@ -93,12 +92,15 @@ else
 fi
 
 # ── 4. Endpoint /hooks/agent (OpenClaw Gateway na porta 18789) ───────────────
+# Bug 12a: corpo vazio {} retorna 400 (body obrigatório); precisamos de um body
+#   com "message" + "name" para o endpoint rejeitar por auth (401) e não por body.
 echo "[4/5] Verificando /hooks/agent..."
 HOOKS_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
     -X POST "http://localhost:18789/hooks/agent" \
     -H "Content-Type: application/json" \
-    -H "Authorization: Bearer wrongtoken_doctor_check" \
-    -d '{}' 2>/dev/null || echo "000")
+    -H "Authorization: Bearer wrong-token-doctor-healthcheck" \
+    -d '{"message":"healthcheck","name":"doctor"}' \
+    2>/dev/null || echo "000")
 if [[ "$HOOKS_HTTP" == "401" ]]; then
     register "OpenClaw /hooks/agent" "$PASS" "respondendo (401 auth — esperado)"
 elif [[ "$HOOKS_HTTP" == "200" ]]; then
@@ -106,7 +108,8 @@ elif [[ "$HOOKS_HTTP" == "200" ]]; then
 elif [[ "$HOOKS_HTTP" == "000" ]]; then
     register "OpenClaw /hooks/agent" "$FAIL" "não responde — gateway rodando? (porta 18789)"
 else
-    register "OpenClaw /hooks/agent" "$WARN" "HTTP inesperado: $HOOKS_HTTP"
+    # Qualquer 4xx/5xx != 000 significa que o endpoint está respondendo
+    register "OpenClaw /hooks/agent" "$WARN" "HTTP $HOOKS_HTTP (endpoint responde — verifique hooks.token)"
 fi
 
 # ── 5. Webhook receiver legado (porta 8089) — opcional ───────────────────────
