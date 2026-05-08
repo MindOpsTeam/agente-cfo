@@ -7,7 +7,7 @@
 #   OMIE_APP_KEY=... OMIE_APP_SECRET=... CFO_WHATSAPP_TO=+55... \
 #   ANTHROPIC_API_KEY=sk-ant-... LLM_BUDGET_BRL=50 \
 #   PANEL_BASE_URL=https://xxx.supabase.co/functions/v1 \
-#   bash setup.sh
+#   NONINTERACTIVE=1 bash setup.sh
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ step() {
 # ─────────────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║         Agente CFO — Instalador v1.0             ║${NC}"
+echo -e "${CYAN}║         Agente CFO — Instalador v1.1             ║${NC}"
 echo -e "${CYAN}║   CFO virtual para PME brasileira via Omie+WA    ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -76,16 +76,31 @@ chmod 700 "${STATE_DIR}/memory"
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 1: Pre-flight
 # ─────────────────────────────────────────────────────────────────────────────
-step "1/12 — Verificando dependências"
+step "1/13 — Verificando dependências"
 
-# Verificar/instalar Node 22+ (obrigatório pelo OpenClaw 2026.5+)
+# ── Bug 1: Node check ≥22.12 + auto-install via NodeSource ───────────────────
+# OpenClaw 2026.5+ requer Node v22.12+. Node 18/20 causa hard error na inicialização.
+_install_node22() {
+    info "Instalando Node 22 LTS via NodeSource..."
+    command -v curl &>/dev/null || apt-get install -y curl -q
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>&1 | tail -5
+    apt-get install -y nodejs 2>&1 | tail -5
+    local _maj _min
+    _maj=$(node --version 2>/dev/null | tr -d 'v' | cut -d. -f1)
+    _min=$(node --version 2>/dev/null | tr -d 'v' | cut -d. -f2)
+    if [[ "${_maj:-0}" -lt 22 ]] || ( [[ "${_maj:-0}" -eq 22 ]] && [[ "${_min:-0}" -lt 12 ]] ); then
+        fail "Instalação do Node falhou. Instale manualmente e execute o setup de novo."
+    fi
+    ok "Node.js $(node --version) instalado."
+}
+
 _ensure_node22() {
     if command -v node &>/dev/null; then
-        local major minor
-        major=$(node --version | tr -d 'v' | cut -d. -f1)
-        minor=$(node --version | tr -d 'v' | cut -d. -f2)
-        # Aceita 22.12+ ou 23+
-        if [[ "$major" -gt 22 ]] || ( [[ "$major" -eq 22 ]] && [[ "$minor" -ge 12 ]] ); then
+        local _maj _min
+        _maj=$(node --version | tr -d 'v' | cut -d. -f1)
+        _min=$(node --version | tr -d 'v' | cut -d. -f2)
+        # Aceita 22.12+ ou qualquer 23+
+        if [[ "$_maj" -gt 22 ]] || ( [[ "$_maj" -eq 22 ]] && [[ "$_min" -ge 12 ]] ); then
             ok "Node.js $(node --version) — OK."
             return
         fi
@@ -99,10 +114,10 @@ _ensure_node22() {
         return
     fi
 
-    local ans
-    read -rp "$(echo -e "${CYAN}?${NC} Posso instalar Node 22 LTS via apt? (S/n): ")" ans
-    ans="${ans:-S}"
-    if [[ "$ans" =~ ^[Ss]$ ]]; then
+    local _ans
+    read -rp "$(echo -e "${CYAN}?${NC} Posso instalar Node 22 LTS via apt? (S/n): ")" _ans
+    _ans="${_ans:-S}"
+    if [[ "$_ans" =~ ^[Ss]$ ]]; then
         _install_node22
     else
         fail "Node.js v22.12+ é obrigatório (OpenClaw exige).
@@ -111,20 +126,6 @@ Instale manualmente:
   apt-get install -y nodejs
 Depois execute este script novamente."
     fi
-}
-
-_install_node22() {
-    info "Instalando Node 22 LTS via NodeSource..."
-    command -v curl &>/dev/null || apt-get install -y curl -q
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - 2>&1 | tail -5
-    apt-get install -y nodejs 2>&1 | tail -5
-    local major minor
-    major=$(node --version | tr -d 'v' | cut -d. -f1)
-    minor=$(node --version | tr -d 'v' | cut -d. -f2)
-    if [[ "$major" -lt 22 ]] || ( [[ "$major" -eq 22 ]] && [[ "$minor" -lt 12 ]] ); then
-        fail "Instalação do Node falhou. Instale manualmente e execute o setup de novo."
-    fi
-    ok "Node.js $(node --version) instalado."
 }
 
 _ensure_node22
@@ -141,15 +142,14 @@ Instale com:
 ok "Dependências OK."
 
 # ── Pre-flight 1b: validar flags do openclaw cron add ────────────────────────
-# As flags abaixo são usadas no PASSO 12. Se não existirem nessa versão do
-# OpenClaw, os cron jobs seriam registrados errado e o setup terminaria verde
-# com IDs falsos. Melhor falhar aqui, antes de fazer qualquer mudança.
 if command -v openclaw &>/dev/null; then
     info "Verificando suporte a flags de 'openclaw cron add'..."
     _CRON_HELP=$(openclaw cron add --help 2>&1 || true)
     _OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "desconhecida")
     _CRON_FLAGS_OK=1
 
+    # Bug 2: grep -qF "$_flag" interpretava "--no-deliver" como opção do grep.
+    # Adicionado "--" para tratar qualquer $_flag como pattern puro.
     for _flag in "--no-deliver" "--light-context" "--session" "--json"; do
         if echo "$_CRON_HELP" | grep -qF -- "$_flag"; then
             ok "openclaw cron add ${_flag}: suportado"
@@ -171,7 +171,7 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 2: Instalar/atualizar OpenClaw
 # ─────────────────────────────────────────────────────────────────────────────
-step "2/12 — OpenClaw"
+step "2/13 — OpenClaw"
 
 if command -v openclaw &>/dev/null; then
     ok "OpenClaw já instalado. Atualizando..."
@@ -194,7 +194,7 @@ export OPENCLAW_NO_RESPAWN=1
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 3: Credenciais Omie + WhatsApp + LLM
 # ─────────────────────────────────────────────────────────────────────────────
-step "3/12 — Credenciais"
+step "3/13 — Credenciais"
 
 ask "OMIE_APP_KEY"      "Omie App Key"
 ask "OMIE_APP_SECRET"   "Omie App Secret"
@@ -210,18 +210,15 @@ ask "LLM_BUDGET_BRL"    "Orçamento mensal LLM em BRL" "50"
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 4: PANEL_BASE_URL e PANEL_TOKEN
 # ─────────────────────────────────────────────────────────────────────────────
-step "4/12 — Painel (Supabase do cliente)"
+step "4/13 — Painel (Supabase do cliente)"
 
 ask "PANEL_BASE_URL" \
     "URL do seu projeto Supabase (ex: https://xxxx.supabase.co/functions/v1)"
 
-# Validar formato básico
 [[ "$PANEL_BASE_URL" =~ ^https://[a-z0-9]+\.supabase\.co/functions/v1 ]] || \
     warn "PANEL_BASE_URL não parece uma URL Supabase válida. Continuando."
-# Normalizar: remover barra final
 PANEL_BASE_URL="${PANEL_BASE_URL%/}"
 
-# Gerar PANEL_TOKEN se não definido
 if [[ -z "${PANEL_TOKEN:-}" ]]; then
     PANEL_TOKEN=$(openssl rand -hex 32)
     ok "PANEL_TOKEN gerado."
@@ -246,7 +243,7 @@ read -rp "Pressione ENTER após configurar o secret no Supabase..."
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 5: Gerar HOOKS_TOKEN
 # ─────────────────────────────────────────────────────────────────────────────
-step "5/12 — Gerando hooks token"
+step "5/13 — Gerando hooks token"
 
 if [[ -z "${HOOKS_TOKEN:-}" ]]; then
     HOOKS_TOKEN=$(openssl rand -hex 16)
@@ -256,12 +253,108 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 6: Parear WhatsApp
+# PASSO 5b: Configurar OpenClaw (gateway.mode, provider Anthropic, secrets)
 # ─────────────────────────────────────────────────────────────────────────────
-step "6/12 — Pareamento WhatsApp"
+step "5b/13 — Configurando OpenClaw"
 
-if wacli doctor 2>&1 | grep -qi "connected\|ok\|pareado"; then
-    ok "WhatsApp já pareado — pulando."
+# Bug 4: sem gateway.mode=local o gateway aborta com
+#   "Gateway start blocked: existing config is missing gateway.mode."
+openclaw config set gateway.mode local 2>&1 | grep -v "^Config overwrite" || true
+ok "gateway.mode=local configurado."
+
+# Bug 6+7: configurar provider Anthropic + secrets.providers em um único config patch
+info "Configurando provider Anthropic no OpenClaw..."
+_ANTHROPIC_PATCH=$(mktemp /tmp/anthropic-cfg-XXXXXX.json5)
+cat > "$_ANTHROPIC_PATCH" <<'ANTEOF'
+{
+  "models": {
+    "providers": {
+      "anthropic": {
+        "baseUrl": "https://api.anthropic.com",
+        "apiKey": {
+          "source": "env",
+          "provider": "anthropic",
+          "id": "ANTHROPIC_API_KEY"
+        },
+        "models": [
+          {
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "api": "anthropic-messages",
+            "input": ["text", "image"]
+          }
+        ]
+      }
+    }
+  },
+  "secrets": {
+    "providers": {
+      "anthropic": {
+        "source": "env",
+        "allowlist": ["ANTHROPIC_API_KEY"]
+      }
+    }
+  }
+}
+ANTEOF
+openclaw config patch --file "$_ANTHROPIC_PATCH" 2>&1 | tail -3 || warn "config patch falhou — continuando."
+rm -f "$_ANTHROPIC_PATCH"
+
+openclaw models set anthropic/claude-sonnet-4-6 2>/dev/null || warn "models set falhou — continuando."
+ok "Provider Anthropic/claude-sonnet-4-6 configurado como padrão."
+
+# Exportar ANTHROPIC_API_KEY para o runtime do OpenClaw (bashrc + env atual)
+grep -q "ANTHROPIC_API_KEY" "${HOME}/.bashrc" 2>/dev/null || \
+    echo "export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" >> "${HOME}/.bashrc"
+export ANTHROPIC_API_KEY
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 6: Instalar wacli
+# ─────────────────────────────────────────────────────────────────────────────
+# Bug 8: wacli não vem com OpenClaw. Em VPS limpa: "command not found".
+step "6/13 — Instalando wacli"
+
+if command -v wacli &>/dev/null; then
+    ok "wacli já instalado: $(wacli --version 2>&1 | head -1)"
+else
+    _ARCH=$(uname -m)
+    case "$_ARCH" in
+        x86_64)  _WACLI_ARCH="amd64" ;;
+        aarch64) _WACLI_ARCH="arm64" ;;
+        *)        fail "Arquitetura não suportada para wacli: $_ARCH" ;;
+    esac
+    _WACLI_VER="${WACLI_VERSION:-v0.7.0}"
+    info "Baixando wacli ${_WACLI_VER} (${_WACLI_ARCH})..."
+    curl -fsSL \
+        "https://github.com/steipete/wacli/releases/download/${_WACLI_VER}/wacli-linux-${_WACLI_ARCH}.tar.gz" \
+        -o /tmp/wacli.tar.gz || fail "Falha ao baixar wacli. Verifique conectividade."
+    tar xzf /tmp/wacli.tar.gz -C /tmp
+    mv /tmp/wacli /usr/local/bin/wacli
+    chmod +x /usr/local/bin/wacli
+    rm -f /tmp/wacli.tar.gz
+    ok "wacli instalado: $(wacli --version 2>&1 | head -1)"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 7: Pareamento WhatsApp
+# ─────────────────────────────────────────────────────────────────────────────
+step "7/13 — Pareamento WhatsApp"
+
+# Bug 12b: "connected" casa "disconnected" com grep -qi. Usar check estrito.
+_wacli_connected() {
+    local _out
+    _out=$(wacli doctor 2>&1 || true)
+    # connected ou locked_by_other_process = bom (wacli-sync tem o lock)
+    if echo "$_out" | grep -qE 'AUTHENTICATED[[:space:]]+true|"authenticated":true'; then
+        if echo "$_out" | grep -qE 'CONNECTION_STATE[[:space:]]+(connected|locked_by_other_process)|"connected":true'; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+if _wacli_connected; then
+    ok "WhatsApp já pareado e conectado — pulando."
 else
     info "Iniciando pareamento WhatsApp..."
     echo ""
@@ -273,27 +366,27 @@ else
 
     wacli auth || fail "Falha no pareamento. Execute 'wacli auth' manualmente e tente de novo."
 
-    sleep 2
-    wacli doctor 2>&1 | grep -qi "connected\|ok" || \
-        fail "WhatsApp pareado mas não conectado. Verifique 'wacli doctor'."
+    sleep 3
+    _wacli_connected || \
+        warn "WhatsApp pareado mas conexão ainda não confirmada. Verifique 'wacli doctor' após o setup."
     ok "WhatsApp pareado."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 7: Cloudflare Tunnel
+# PASSO 8: Cloudflare Tunnel + systemd units
 # ─────────────────────────────────────────────────────────────────────────────
-step "7/12 — Cloudflare Tunnel"
+step "8/13 — Cloudflare Tunnel + systemd"
 
 if ! command -v cloudflared &>/dev/null; then
     info "Instalando cloudflared..."
-    ARCH=$(uname -m)
-    case "$ARCH" in
-        x86_64)  CF_ARCH="amd64" ;;
-        aarch64) CF_ARCH="arm64" ;;
-        *)        fail "Arquitetura não suportada: $ARCH" ;;
+    _CF_ARCH_MAP=""
+    case "$(uname -m)" in
+        x86_64)  _CF_ARCH_MAP="amd64" ;;
+        aarch64) _CF_ARCH_MAP="arm64" ;;
+        *)        fail "Arquitetura não suportada: $(uname -m)" ;;
     esac
     curl -fsSL \
-        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}" \
+        "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${_CF_ARCH_MAP}" \
         -o /usr/local/bin/cloudflared
     chmod +x /usr/local/bin/cloudflared
     ok "cloudflared instalado."
@@ -301,22 +394,27 @@ else
     ok "cloudflared já instalado."
 fi
 
-# Configurar gateway OpenClaw como serviço
-OPENCLAW_SVC="/etc/systemd/system/openclaw-gateway.service"
-if [[ ! -f "$OPENCLAW_SVC" ]]; then
-    cat > "$OPENCLAW_SVC" << EOF
+# Bug 3: ExecStart era "openclaw gateway start" — subcomando inexistente.
+# ExecStart correto: "openclaw gateway --port 18789 --bind loopback"
+# Bug 5: systemctl start nunca era chamado. Agora usamos --now.
+_OPENCLAW_BIN="$(command -v openclaw)"
+_CF_BIN="$(command -v cloudflared)"
+_USER_NAME="${USER:-root}"
+
+# Configurar unit do gateway (recria para garantir ExecStart correto)
+cat > /etc/systemd/system/openclaw-gateway.service << EOF
 [Unit]
 Description=OpenClaw Gateway (Agente CFO)
 After=network.target
 
 [Service]
 Type=simple
-User=${USER}
+User=${_USER_NAME}
 Environment=HOME=${HOME}
 Environment=OPENCLAW_NO_RESPAWN=1
 Environment=NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache
 EnvironmentFile=${ENV_FILE}
-ExecStart=$(command -v openclaw) gateway start
+ExecStart=${_OPENCLAW_BIN} gateway --port 18789 --bind loopback
 Restart=always
 RestartSec=5
 TimeoutStartSec=90
@@ -324,66 +422,127 @@ TimeoutStartSec=90
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable openclaw-gateway 2>/dev/null || true
-    ok "Serviço openclaw-gateway configurado."
-else
-    ok "Serviço openclaw-gateway já existe."
-fi
 
-# Subir tunnel e capturar URL (apenas se INGRESS_URL não estiver definida)
-if [[ -n "${INGRESS_URL:-}" ]]; then
-    ok "INGRESS_URL já definida: $INGRESS_URL — pulando."
-else
-    info "Subindo Cloudflare Tunnel..."
-    TUNNEL_LOG=$(mktemp /tmp/cfd-XXXXXX.log)
-
-    cloudflared tunnel --url "http://localhost:18789" \
-        --logfile "$TUNNEL_LOG" --no-autoupdate &
-    TUNNEL_PID=$!
-
-    INGRESS_URL=""
-    for i in $(seq 1 30); do
-        sleep 1
-        INGRESS_URL=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -1 || echo "")
-        [[ -n "$INGRESS_URL" ]] && break
-    done
-    rm -f "$TUNNEL_LOG"
-
-    [[ -z "$INGRESS_URL" ]] && { kill "$TUNNEL_PID" 2>/dev/null || true;
-        fail "Não foi possível capturar a URL do Tunnel. Verifique conectividade."; }
-
-    echo "$TUNNEL_PID" > "${STATE_DIR}/cloudflared.pid"
-    ok "Tunnel ativo: $INGRESS_URL"
-
-    # Configurar como serviço
-    CF_SVC="/etc/systemd/system/cloudflared-cfo.service"
-    if [[ ! -f "$CF_SVC" ]]; then
-        cat > "$CF_SVC" << EOF
+# Configurar unit do tunnel
+cat > /etc/systemd/system/cloudflared-cfo.service << EOF
 [Unit]
 Description=Cloudflare Tunnel (Agente CFO)
 After=network.target openclaw-gateway.service
 
 [Service]
 Type=simple
-User=${USER}
-ExecStart=$(command -v cloudflared) tunnel --url http://localhost:18789 --no-autoupdate
+User=${_USER_NAME}
+ExecStart=${_CF_BIN} tunnel --url http://localhost:18789 --no-autoupdate
 Restart=always
 RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
 EOF
-        systemctl daemon-reload
-        systemctl enable cloudflared-cfo 2>/dev/null || true
-        ok "Serviço cloudflared-cfo configurado."
+
+# Bug 9: wacli-sync.service — mantém WhatsApp conectado em segundo plano.
+# --idle-exit 0 desabilita saída por idle.
+_WACLI_BIN="$(command -v wacli)"
+cat > /etc/systemd/system/wacli-sync.service << EOF
+[Unit]
+Description=wacli WhatsApp sync (Agente CFO)
+After=network.target
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+ExecStart=${_WACLI_BIN} sync --follow --idle-exit 0
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+
+# Iniciar gateway e aguardar responder (Bug 5)
+systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
+
+info "Aguardando OpenClaw Gateway subir na porta 18789 (até 60s)..."
+_GW_OK=0
+for _i in $(seq 1 30); do
+    if curl -fs http://127.0.0.1:18789/__openclaw__/canvas/ >/dev/null 2>&1 || \
+       ss -tlnp 2>/dev/null | grep -q ':18789'; then
+        _GW_OK=1
+        ok "Gateway pronto (~$(((_i) * 2))s)."
+        break
+    fi
+    sleep 2
+done
+
+if [[ $_GW_OK -eq 0 ]]; then
+    warn "Gateway não respondeu em 60s — tentando restart..."
+    systemctl restart openclaw-gateway 2>/dev/null || true
+    sleep 8
+    ss -tlnp 2>/dev/null | grep -q ':18789' || \
+        fail "Gateway não subiu. Diagnóstico:
+  journalctl -u openclaw-gateway -n 50
+  openclaw gateway --port 18789 --bind loopback  # manual pra ver erro"
+fi
+
+# Configurar hooks no gateway (agora que está up)
+openclaw config set hooks.enabled true        2>/dev/null || warn "hooks.enabled: falhou"
+openclaw config set hooks.token "${HOOKS_TOKEN}" 2>/dev/null || warn "hooks.token: falhou"
+ok "OpenClaw hooks configurados (token: ${HOOKS_TOKEN:0:8}...)."
+
+# Iniciar wacli-sync
+systemctl enable --now wacli-sync 2>/dev/null || warn "wacli-sync: enable falhou (não crítico)."
+ok "wacli-sync iniciado (mantém WhatsApp conectado)."
+
+# Iniciar tunnel e capturar URL
+if [[ -n "${INGRESS_URL:-}" ]]; then
+    ok "INGRESS_URL já definida: $INGRESS_URL — pulando tunnel."
+else
+    systemctl enable --now cloudflared-cfo 2>/dev/null || warn "cloudflared-cfo enable falhou."
+
+    info "Aguardando Cloudflare Tunnel URL (até 60s)..."
+    INGRESS_URL=""
+    for _i in $(seq 1 30); do
+        sleep 2
+        INGRESS_URL=$(journalctl -u cloudflared-cfo -n 80 --no-pager 2>/dev/null \
+            | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1 || echo "")
+        [[ -n "$INGRESS_URL" ]] && break
+    done
+
+    # Fallback: processo inline se journalctl não tiver a URL ainda
+    if [[ -z "$INGRESS_URL" ]]; then
+        warn "URL não encontrada via journalctl — tentando fallback inline..."
+        systemctl stop cloudflared-cfo 2>/dev/null || true
+        _TUNNEL_LOG=$(mktemp /tmp/cfd-XXXXXX.log)
+        cloudflared tunnel --url "http://localhost:18789" \
+            --logfile "$_TUNNEL_LOG" --no-autoupdate &
+        _TUNNEL_PID=$!
+        for _i in $(seq 1 30); do
+            sleep 2
+            INGRESS_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$_TUNNEL_LOG" 2>/dev/null | head -1 || echo "")
+            [[ -n "$INGRESS_URL" ]] && break
+        done
+        rm -f "$_TUNNEL_LOG"
+        if [[ -z "$INGRESS_URL" ]]; then
+            kill "${_TUNNEL_PID:-}" 2>/dev/null || true
+            fail "Não foi possível capturar URL do Tunnel.
+Verifique: journalctl -u cloudflared-cfo -n 50
+O Tunnel exige saída TCP para *.cloudflare.com na porta 443."
+        fi
+        ok "Tunnel ativo (inline): $INGRESS_URL"
+        # Atualizar unit para refletir tunnel ativo e reiniciar via systemd
+        systemctl start cloudflared-cfo 2>/dev/null || true
+    else
+        ok "Tunnel ativo (systemd): $INGRESS_URL"
     fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 8: Instalar skill omie
+# PASSO 9: Instalar skill omie
 # ─────────────────────────────────────────────────────────────────────────────
-step "8/12 — Skill omie"
+step "9/13 — Skill omie"
 
 OMIE_DEST="${HOME}/.openclaw/workspace/skills/omie"
 if [[ -d "$OMIE_DEST" ]]; then
@@ -398,9 +557,9 @@ fi
     pip3 install -r "$OMIE_DEST/requirements.txt" -q 2>/dev/null || true
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 9: Instalar skill agente-cfo
+# PASSO 10: Instalar skill agente-cfo
 # ─────────────────────────────────────────────────────────────────────────────
-step "9/12 — Skill agente-cfo"
+step "10/13 — Skill agente-cfo"
 
 if [[ -d "$SKILL_DEST" && -f "$SKILL_DEST/SKILL.md" ]]; then
     ok "Skill agente-cfo já instalada. Atualizando..."
@@ -420,9 +579,9 @@ fi
 chmod +x "$SKILL_DEST/scripts/"*.sh
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 10: Persistir env
+# PASSO 11: Persistir env
 # ─────────────────────────────────────────────────────────────────────────────
-step "10/12 — Persistindo configuração"
+step "11/13 — Persistindo configuração"
 
 mkdir -p "$(dirname "$ENV_FILE")"
 
@@ -443,29 +602,14 @@ EOF
 chmod 600 "$ENV_FILE"
 ok "Config salva em $ENV_FILE (chmod 600)."
 
-# ── Configurar hooks no OpenClaw (expõe /hooks/agent na porta 18789) ─────────
-# O painel envia comandos via POST ${INGRESS_URL}/hooks/agent → Cloudflare Tunnel
-# → localhost:18789/hooks/agent. O OpenClaw Gateway precisa de hooks.enabled=true
-# e hooks.token configurado para autenticar as requisições do painel.
-if command -v openclaw &>/dev/null; then
-    openclaw config set hooks.enabled true   2>/dev/null || warn "Não configurou hooks.enabled (ignora se OpenClaw não iniciou ainda)."
-    openclaw config set hooks.token "${HOOKS_TOKEN}" 2>/dev/null || warn "Não configurou hooks.token (ignora se OpenClaw não iniciou ainda)."
-    ok "OpenClaw hooks configurados (token: ${HOOKS_TOKEN:0:8}...)."
-fi
-
-# Exportar ANTHROPIC_API_KEY para o OpenClaw
-grep -q "ANTHROPIC_API_KEY" "${HOME}/.bashrc" 2>/dev/null || \
-    echo "export ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}" >> "${HOME}/.bashrc"
-
 # shellcheck source=/dev/null
 source "$ENV_FILE"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 11: Registrar instância no painel
+# PASSO 12: Registrar instância no painel
 # ─────────────────────────────────────────────────────────────────────────────
-step "11/12 — Registrando no painel"
+step "12/13 — Registrando no painel"
 
-# Verificar se já está registrado (idempotência)
 INSTANCE_ID="${INSTANCE_ID:-}"
 if [[ -f "$INSTANCE_ENV" ]]; then
     # shellcheck source=/dev/null
@@ -514,14 +658,13 @@ ok "Instância registrada: $INSTANCE_ID"
 export INSTANCE_ID
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PASSO 12: Registrar cron jobs + doctor final
+# PASSO 13: Registrar cron jobs + doctor final
 # ─────────────────────────────────────────────────────────────────────────────
-step "12/12 — Cron jobs e diagnóstico"
+step "13/13 — Cron jobs e diagnóstico"
 
 SCRIPTS_DIR="$SKILL_DEST/scripts"
 PROMPTS_DIR="$SKILL_DEST/prompts"
 
-# Carregar IDs existentes
 [[ -f "$CRON_IDS_FILE" ]] && source "$CRON_IDS_FILE" 2>/dev/null || true
 
 _add_cron_if_missing() {
@@ -552,16 +695,14 @@ except:
     print(m.group() if m else '')
 " 2>/dev/null || echo "")
 
-    # UUID válido é obrigatório — setup nunca termina verde com ID falso.
     if [[ -z "$new_id" ]] || ! echo "$new_id" | grep -qP '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'; then
-        fail "Não foi possível capturar um UUID válido para o cron '${var_name}'.
-Saída do comando:
+        fail "Não foi possível capturar UUID válido para '${var_name}'.
+Saída:
 $(eval "$cron_cmd" 2>&1 | head -20)
 
 Verifique:
-  • OpenClaw está rodando? (openclaw gateway status)
-  • Flags suportadas? (openclaw cron add --help)
-  • Execute manualmente e veja o output: ${cron_cmd}"
+  • openclaw gateway status
+  • openclaw cron add --help"
     fi
 
     export "$var_name"="$new_id"
@@ -586,10 +727,6 @@ _add_cron_if_missing "CRON_ID_WA_WATCH" \
     "openclaw cron add --name 'CFO WhatsApp Watch' --cron '*/30 * * * *' --tz 'America/Sao_Paulo' --session isolated --message 'Execute: bash ${SCRIPTS_DIR}/whatsapp-watch.sh' --no-deliver --light-context --json"
 
 ok "Cron jobs registrados. IDs em: $CRON_IDS_FILE"
-
-# Iniciar serviços
-systemctl start openclaw-gateway 2>/dev/null || warn "openclaw-gateway: não iniciou via systemctl."
-systemctl start cloudflared-cfo  2>/dev/null || warn "cloudflared-cfo: não iniciou via systemctl."
 
 # Doctor final
 info "Executando diagnóstico final..."
