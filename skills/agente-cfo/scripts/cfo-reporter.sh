@@ -22,11 +22,13 @@ fi
 
 # ── Config obrigatório ────────────────────────────────────────────────────────
 : "${CFO_WHATSAPP_TO:?missing — defina CFO_WHATSAPP_TO no ambiente (ex: +5511999999999)}"
-: "${OMIE_APP_KEY:?missing — defina OMIE_APP_KEY no ambiente}"
-: "${OMIE_APP_SECRET:?missing — defina OMIE_APP_SECRET no ambiente}"
 
 LOG_FILE="$LOG_DIR/cfo-reporter.log"
+ERP_GATEWAY="$SCRIPT_DIR/erp_gateway.py"
+# Fallback legado (se erp_gateway nao existir, usa omie-pull-wrapper)
 OMIE_WRAPPER="$SCRIPT_DIR/omie-pull-wrapper.sh"
+USE_GATEWAY=false
+[[ -f "$ERP_GATEWAY" ]] && USE_GATEWAY=true
 
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 PROMPT_NAME=$(basename "$PROMPT_FILE" .md)
@@ -34,35 +36,60 @@ PROMPT_NAME=$(basename "$PROMPT_FILE" .md)
 exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== cfo-reporter.sh [$PROMPT_NAME] iniciado em $TIMESTAMP ==="
 
-# ── Coletar dados do Omie ─────────────────────────────────────────────────────
-echo "Coletando dados do Omie ERP..."
+# ── Coletar dados do ERP ──────────────────────────────────────────────────────
+DATA_HOJE_ISO=$(date '+%Y-%m-%d')
+ERP_NAME="${CFO_ERP_NAME:-omie}"
+echo "Coletando dados do ERP ($ERP_NAME)..."
 
-if ! RESUMO_FINANCEIRO=$(bash "$OMIE_WRAPPER" resumo_financeiro 2>&1); then
-    echo "ERRO: falha ao coletar resumo_financeiro"
-    _panel_event "alerta_enviado" "error" \
-        "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"omie resumo_financeiro falhou\"}"
-    exit 1
+if [[ "$USE_GATEWAY" == "true" ]]; then
+    if ! RESUMO_FINANCEIRO=$(python3 "$ERP_GATEWAY" get_balance 2>&1); then
+        echo "ERRO: falha ao coletar get_balance"
+        _panel_event "alerta_enviado" "error" \
+            "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"erp get_balance falhou\"}"
+        exit 1
+    fi
+
+    if ! CONTAS_RECEBER=$(python3 "$ERP_GATEWAY" list_receivables --from "$DATA_HOJE_ISO" 2>&1); then
+        echo "ERRO: falha ao coletar list_receivables"
+        _panel_event "alerta_enviado" "error" \
+            "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"erp list_receivables falhou\"}"
+        exit 1
+    fi
+
+    if ! CONTAS_PAGAR=$(python3 "$ERP_GATEWAY" list_payables --from "$DATA_HOJE_ISO" 2>&1); then
+        echo "ERRO: falha ao coletar list_payables"
+        _panel_event "alerta_enviado" "error" \
+            "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"erp list_payables falhou\"}"
+        exit 1
+    fi
+else
+    # Fallback legado — Omie direto
+    if ! RESUMO_FINANCEIRO=$(bash "$OMIE_WRAPPER" resumo_financeiro 2>&1); then
+        echo "ERRO: falha ao coletar resumo_financeiro"
+        _panel_event "alerta_enviado" "error" \
+            "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"omie resumo_financeiro falhou\"}"
+        exit 1
+    fi
+
+    if ! CONTAS_RECEBER=$(bash "$OMIE_WRAPPER" contas_receber 1 50 2>&1); then
+        echo "ERRO: falha ao coletar contas_receber"
+        _panel_event "alerta_enviado" "error" \
+            "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"omie contas_receber falhou\"}"
+        exit 1
+    fi
+
+    if ! CONTAS_PAGAR=$(bash "$OMIE_WRAPPER" contas_pagar 1 50 2>&1); then
+        echo "ERRO: falha ao coletar contas_pagar"
+        _panel_event "alerta_enviado" "error" \
+            "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"omie contas_pagar falhou\"}"
+        exit 1
+    fi
 fi
 
-if ! CONTAS_RECEBER=$(bash "$OMIE_WRAPPER" contas_receber 1 50 2>&1); then
-    echo "ERRO: falha ao coletar contas_receber"
-    _panel_event "alerta_enviado" "error" \
-        "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"omie contas_receber falhou\"}"
-    exit 1
-fi
-
-if ! CONTAS_PAGAR=$(bash "$OMIE_WRAPPER" contas_pagar 1 50 2>&1); then
-    echo "ERRO: falha ao coletar contas_pagar"
-    _panel_event "alerta_enviado" "error" \
-        "{\"prompt\":\"$PROMPT_NAME\",\"status\":\"fail\",\"detail\":\"omie contas_pagar falhou\"}"
-    exit 1
-fi
-
-echo "Dados Omie coletados com sucesso."
+echo "Dados ERP coletados com sucesso."
 
 # ── Montar contexto ───────────────────────────────────────────────────────────
 DATA_HOJE=$(date '+%d/%m/%Y')
-DATA_HOJE_ISO=$(date '+%Y-%m-%d')
 
 CONTEXT_FILE=$(mktemp /tmp/cfo-context-XXXXXX.json)
 trap 'rm -f "$CONTEXT_FILE"' EXIT
@@ -89,9 +116,10 @@ cat > "$CONTEXT_FILE" << EOF
   "data_hoje": "$DATA_HOJE",
   "data_hoje_iso": "$DATA_HOJE_ISO",
   "whatsapp_to": "$CFO_WHATSAPP_TO",
-  "omie_resumo_financeiro": ${RESUMO_JSON},
-  "omie_contas_receber": ${RECEBER_JSON},
-  "omie_contas_pagar": ${PAGAR_JSON}
+  "erp_name": "$ERP_NAME",
+  "erp_saldo": ${RESUMO_JSON},
+  "erp_contas_receber": ${RECEBER_JSON},
+  "erp_contas_pagar": ${PAGAR_JSON}
 }
 EOF
 

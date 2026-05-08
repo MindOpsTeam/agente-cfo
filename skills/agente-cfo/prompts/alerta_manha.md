@@ -13,23 +13,24 @@ diga "dado indisponível" no lugar. Nunca faça estimativas ou suposições num�
 
 ## Dados a Coletar (execute em ordem)
 
-1. **Resumo financeiro geral:**
+1. **Saldo atual:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py resumo_financeiro
+   python3 $SCRIPTS_DIR/erp_gateway.py get_balance
    ```
 
 2. **Contas a receber — vencendo hoje e vencidas:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py contas_receber 1 50
+   python3 $SCRIPTS_DIR/erp_gateway.py list_receivables --from DATA_HOJE_ISO
+   python3 $SCRIPTS_DIR/erp_gateway.py list_overdue
    ```
-   Filtre os resultados: pegue apenas lançamentos com `data_vencimento` igual a hoje
-   ou anterior a hoje com `status != "RECEBIDO"`.
+   Filtre os resultados: pegue apenas lançamentos com `due_date` igual a hoje
+   ou anterior a hoje com `status` != "received".
 
 3. **Contas a pagar — vencendo hoje:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py contas_pagar 1 50
+   python3 $SCRIPTS_DIR/erp_gateway.py list_payables --from DATA_HOJE_ISO --to DATA_HOJE_ISO
    ```
-   Filtre: apenas lançamentos com `data_vencimento` igual a hoje e `status != "PAGO"`.
+   Filtre: apenas lançamentos com `due_date` igual a hoje e `status` != "paid".
 
 ## Formato Exato da Mensagem WhatsApp
 

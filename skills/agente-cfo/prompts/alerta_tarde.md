@@ -15,36 +15,34 @@ apenas some o que está explicitamente nos dados de contas a receber/pagar dos p
 
 ## Dados a Coletar (execute em ordem)
 
-1. **Resumo financeiro geral:**
+1. **Saldo atual:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py resumo_financeiro
+   python3 $SCRIPTS_DIR/erp_gateway.py get_balance
    ```
 
 2. **Contas recebidas hoje:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py contas_receber 1 50
+   python3 $SCRIPTS_DIR/erp_gateway.py list_receivables --from DATA_HOJE_ISO --to DATA_HOJE_ISO
    ```
-   Filtre: lançamentos com `data_recebimento` igual a hoje e `status == "RECEBIDO"`.
+   Filtre: lançamentos com `status == "received"`.
 
 3. **Contas pagas hoje:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py contas_pagar 1 50
+   python3 $SCRIPTS_DIR/erp_gateway.py list_payables --from DATA_HOJE_ISO --to DATA_HOJE_ISO
    ```
-   Filtre: lançamentos com `data_pagamento` igual a hoje e `status == "PAGO"`.
+   Filtre: lançamentos com `status == "paid"`.
 
 4. **Projeção próximos 7 dias — recebimentos:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py contas_receber 1 100
+   python3 $SCRIPTS_DIR/erp_gateway.py list_receivables --from DATA_AMANHA_ISO --to DATA_7DIAS_ISO --limit 100
    ```
-   Filtre: `data_vencimento` entre amanhã e 7 dias à frente, `status != "RECEBIDO"`.
-   Some os valores por dia.
+   Filtre: `status != "received"`. Some os valores por dia.
 
 5. **Projeção próximos 7 dias — pagamentos:**
    ```
-   python3 $OMIE_SKILL_PATH/scripts/omie_client.py contas_pagar 1 100
+   python3 $SCRIPTS_DIR/erp_gateway.py list_payables --from DATA_AMANHA_ISO --to DATA_7DIAS_ISO --limit 100
    ```
-   Filtre: `data_vencimento` entre amanhã e 7 dias à frente, `status != "PAGO"`.
-   Some os valores por dia.
+   Filtre: `status != "paid"`. Some os valores por dia.
 
 ## Formato Exato da Mensagem WhatsApp
 
