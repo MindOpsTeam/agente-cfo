@@ -517,6 +517,26 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+# wacli-inbound.service — daemon de inbound WhatsApp (polling)
+_INBOUND_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/wacli_inbound.py"
+cat > /etc/systemd/system/wacli-inbound.service << EOF
+[Unit]
+Description=wacli WhatsApp Inbound Listener (Agente CFO)
+After=network.target wacli-sync.service openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_INBOUND_SCRIPT}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
 
 # Iniciar gateway e aguardar responder (Bug 5)
@@ -552,6 +572,10 @@ ok "OpenClaw hooks configurados (token: ${HOOKS_TOKEN:0:8}...)."
 # Iniciar wacli-sync
 systemctl enable --now wacli-sync 2>/dev/null || warn "wacli-sync: enable falhou (não crítico)."
 ok "wacli-sync iniciado (mantém WhatsApp conectado)."
+
+# Iniciar wacli-inbound (listener de mensagens)
+systemctl enable --now wacli-inbound 2>/dev/null || warn "wacli-inbound enable falhou"
+ok "wacli-inbound.service iniciado."
 
 # Iniciar tunnel e capturar URL
 if [[ -n "${INGRESS_URL:-}" ]]; then

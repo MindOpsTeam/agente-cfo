@@ -34,7 +34,7 @@ register() {
 # Bug 12b: grep -qi "connected" casava "disconnected" (substring match).
 # Fix: check estrito em AUTHENTICATED=true + CONNECTION_STATE=connected|locked_by_other_process.
 # "locked_by_other_process" = wacli-sync tem o lock = bom, está conectado.
-echo "[1/5] Verificando WhatsApp..."
+echo "[1/6] Verificando WhatsApp..."
 _wacli_out=$(wacli doctor 2>&1 || true)
 if echo "$_wacli_out" | grep -qE 'AUTHENTICATED[[:space:]]+true|"authenticated":[[:space:]]*true'; then
     if echo "$_wacli_out" | grep -qE 'CONNECTION_STATE[[:space:]]+(connected|locked_by_other_process)|"connected":[[:space:]]*true'; then
@@ -47,7 +47,7 @@ else
 fi
 
 # ── 2. Omie ERP (ping via resumo_financeiro, timeout 15s) ─────────────────────
-echo "[2/5] Verificando Omie ERP..."
+echo "[2/6] Verificando Omie ERP..."
 if [[ -z "${OMIE_APP_KEY:-}" || -z "${OMIE_APP_SECRET:-}" ]]; then
     register "Omie ERP" "$FAIL" "OMIE_APP_KEY ou OMIE_APP_SECRET não definidos"
 else
@@ -68,7 +68,7 @@ else
 fi
 
 # ── 3. PANEL_TOKEN + conectividade com painel ────────────────────────────────
-echo "[3/5] Verificando painel..."
+echo "[3/6] Verificando painel..."
 if [[ -z "${PANEL_TOKEN:-}" ]]; then
     register "Painel (PANEL_TOKEN)" "$FAIL" "PANEL_TOKEN não definido no ambiente"
 else
@@ -94,7 +94,7 @@ fi
 # ── 4. Endpoint /hooks/agent (OpenClaw Gateway na porta 18789) ───────────────
 # Bug 12a: corpo vazio {} retorna 400 (body obrigatório); precisamos de um body
 #   com "message" + "name" para o endpoint rejeitar por auth (401) e não por body.
-echo "[4/5] Verificando /hooks/agent..."
+echo "[4/6] Verificando /hooks/agent..."
 HOOKS_HTTP=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
     -X POST "http://localhost:18789/hooks/agent" \
     -H "Content-Type: application/json" \
@@ -113,11 +113,19 @@ else
 fi
 
 # ── 5. Webhook receiver legado (porta 8089) — opcional ───────────────────────
-echo "[5/5] Verificando webhook receiver legado..."
+echo "[5/6] Verificando webhook receiver legado..."
 if curl -fs --max-time 5 "http://127.0.0.1:8089/health" > /dev/null 2>&1; then
     register "Webhook receiver legado (8089)" "$PASS" "respondendo"
 else
     register "Webhook receiver legado (8089)" "$WARN" "não está rodando (opcional)"
+fi
+
+# ── 6. wacli-inbound listener ────────────────────────────────────────────────
+echo "[6/6] Verificando wacli-inbound..."
+if systemctl is-active --quiet wacli-inbound 2>/dev/null; then
+    register "wacli-inbound listener" "$PASS" "ativo (escutando mensagens do dono)"
+else
+    register "wacli-inbound listener" "$WARN" "inativo — systemctl start wacli-inbound"
 fi
 
 # ── Tabela de resultado ───────────────────────────────────────────────────────

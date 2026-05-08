@@ -134,3 +134,34 @@ _to_jid() {
     digits=$(printf '%s' "$input" | tr -d '+ ()-')
     echo "${digits}@s.whatsapp.net"
 }
+
+# ── _thread_dir() / _append_thread() / _read_thread() ─────────────────────────
+# Memoria de conversa por contato WhatsApp (JID).
+THREAD_DIR="${THREAD_DIR:-${HOME}/.agente-cfo/memory/threads}"
+
+_thread_dir() {
+    mkdir -p "$THREAD_DIR"
+    echo "$THREAD_DIR"
+}
+
+_thread_file() {
+    local jid="$1"
+    local safe_jid="${jid//[\/:]/_}"
+    mkdir -p "$THREAD_DIR"
+    echo "${THREAD_DIR}/${safe_jid}.md"
+}
+
+_append_thread() {
+    local jid="$1" role="$2" content="$3"
+    local thread_file ts
+    thread_file=$(_thread_file "$jid")
+    ts=$(date '+%Y-%m-%d %H:%M:%S')
+    printf '[%s] [%s] %s\n' "$ts" "$role" "$content" >> "$thread_file"
+}
+
+_read_thread() {
+    local jid="$1" lines="${2:-30}"
+    local thread_file
+    thread_file=$(_thread_file "$jid")
+    [[ -f "$thread_file" ]] && tail -n "$lines" "$thread_file" || echo "(sem historico)"
+}
