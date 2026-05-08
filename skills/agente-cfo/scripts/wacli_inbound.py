@@ -6,6 +6,12 @@ Faz polling de 'wacli messages list --json --after <cursor>' a cada 5s.
 Detecta mensagens novas do dono (self-chat: from == JID pareado, para == JID pareado).
 Dispara POST /hooks/agent para o OpenClaw processar.
 Dedup por message.id via ~/.agente-cfo/state/wacli-cursor.json.
+
+NOTA: Na primeira execução o cursor é inicializado com datetime.now(), portanto
+mensagens anteriores ao primeiro start são ignoradas por design (bug 5 fix).
+
+Compatibilidade de campos: suporta PascalCase (wacli ≥0.7.0) com fallback
+para camelCase/snake_case (versões anteriores) — bug 4 fix.
 """
 import json
 import os
@@ -48,13 +54,28 @@ def log(msg: str):
 
 
 def load_state() -> dict:
+    """Carrega estado do cursor. Na primeira execução (ou last_ts nulo) seta
+    last_ts=now para ignorar histórico anterior ao primeiro start (bug 5).
+    """
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            state = json.loads(STATE_FILE.read_text())
+            if not state.get("last_ts"):
+                state["last_ts"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                save_state(state)
+                log(f"Cursor inicializado para agora: {state['last_ts']} (histórico ignorado)")
+            return state
         except Exception:
             pass
-    return {"last_ts": None, "seen_ids": []}
+    # Primeira execução: cursor = agora
+    state = {
+        "last_ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "seen_ids": [],
+    }
+    save_state(state)
+    log(f"Estado criado. Cursor inicial: {state['last_ts']} (histórico ignorado por design)")
+    return state
 
 
 def save_state(state: dict):
@@ -62,7 +83,31 @@ def save_state(state: dict):
 
 
 def get_own_jid() -> str | None:
-    """Detecta o JID do numero pareado via wacli doctor --json ou contatos."""
+    """Detecta o JID do número pareado.
+
+    Ordem de preferência (bug 6):
+    1. wacli doctor (texto simples) → linha 'LINKED_JID  <jid>'
+    2. wacli doctor --json → campos jid/phone (versões antigas)
+    3. CFO_WHATSAPP_TO se já vier em formato JID (contém '@')
+    4. Último recurso: converter número BR removendo o 9 móvel extra
+       (formato E.164 com 13 dígitos: 55 + DDD + 9 + número).
+    """
+    # 1. wacli doctor texto simples — formato atual wacli 0.7.x
+    try:
+        r = subprocess.run(
+            ["wacli", "doctor"],
+            capture_output=True, text=True, timeout=10,
+        )
+        for line in r.stdout.splitlines():
+            line = line.strip()
+            if line.startswith("LINKED_JID"):
+                parts = line.split()
+                if len(parts) >= 2 and "@" in parts[-1]:
+                    return parts[-1]
+    except Exception:
+        pass
+
+    # 2. wacli doctor --json (compatibilidade versões antigas)
     try:
         r = subprocess.run(
             ["wacli", "doctor", "--json"],
@@ -71,16 +116,25 @@ def get_own_jid() -> str | None:
         if r.returncode == 0:
             d = json.loads(r.stdout)
             jid = d.get("jid") or d.get("data", {}).get("jid") or d.get("phone")
-            if jid:
+            if jid and "@" in str(jid):
                 return jid
     except Exception:
         pass
-    # Fallback: ler CFO_WHATSAPP_TO do env e converter
+
+    # 3. CFO_WHATSAPP_TO como JID direto (já contém '@')
     wa_to = os.environ.get("CFO_WHATSAPP_TO", "")
+    if "@" in wa_to:
+        return wa_to
+
+    # 4. Converter número E.164 BR → JID, removendo o 9 móvel se necessário
     if wa_to:
         digits = "".join(c for c in wa_to if c.isdigit())
+        if len(digits) == 13 and digits.startswith("55"):
+            # 55 + DDD (2 dígitos) + 9 + 8 dígitos → remove o 9 da posição 4
+            digits = digits[:4] + digits[5:]
         if digits:
             return f"{digits}@s.whatsapp.net"
+
     return None
 
 
@@ -107,12 +161,11 @@ def poll_messages(after_ts: str | None, own_jid: str) -> list[dict]:
 
 def is_from_owner(msg: dict, own_jid: str) -> bool:
     """
-    Mensagem valida = enviada PELO dono PRA ele mesmo (self-chat).
-    wacli usa "from_me" ou "sender" == own_jid.
-    Aceita tanto fromMe=true quanto sender == own_jid.
+    Mensagem válida = enviada PELO dono PRA ele mesmo (self-chat).
+    Suporta PascalCase (wacli ≥0.7.0) com fallback camelCase/snake_case (bug 4).
     """
-    from_me = msg.get("fromMe") or msg.get("from_me") or False
-    sender = msg.get("sender") or msg.get("from") or ""
+    from_me = msg.get("FromMe") or msg.get("fromMe") or msg.get("from_me") or False
+    sender = msg.get("SenderJID") or msg.get("sender") or msg.get("from") or ""
     return bool(from_me) or (
         bool(sender) and bool(own_jid)
         and sender.split(":")[0] == own_jid.split(":")[0].split("@")[0]
@@ -120,16 +173,28 @@ def is_from_owner(msg: dict, own_jid: str) -> bool:
 
 
 def extract_text(msg: dict) -> str | None:
-    """Extrai texto de uma mensagem. Retorna None se nao for texto."""
+    """Extrai texto de uma mensagem. Retorna None se não for texto.
+    Suporta PascalCase (wacli ≥0.7.0) com fallback para camelCase (bug 4).
+    """
     text = (
-        msg.get("text")
-        or msg.get("body")
-        or msg.get("content")
+        msg.get("Text") or msg.get("text")
+        or msg.get("DisplayText")
+        or msg.get("body") or msg.get("content")
         or (msg.get("message") or {}).get("conversation")
         or (msg.get("message") or {}).get("extendedTextMessage", {}).get("text")
         or ""
     )
     return text.strip() if text else None
+
+
+def msg_id(msg: dict) -> str | None:
+    """Extrai ID da mensagem — PascalCase (wacli ≥0.7.0) com fallback (bug 4)."""
+    return msg.get("MsgID") or msg.get("id") or msg.get("msgId") or msg.get("messageId")
+
+
+def msg_timestamp(msg: dict):
+    """Extrai timestamp da mensagem — PascalCase com fallback (bug 4)."""
+    return msg.get("Timestamp") or msg.get("timestamp") or msg.get("ts") or msg.get("time")
 
 
 def append_thread(jid: str, role: str, content: str):
@@ -143,7 +208,7 @@ def append_thread(jid: str, role: str, content: str):
         f.write(line)
 
 
-def dispatch_to_agent(text: str, jid: str, msg_id: str):
+def dispatch_to_agent(text: str, jid: str, mid: str):
     """
     POST /hooks/agent com o texto da mensagem.
     O agente OpenClaw processa usando prompts/conversa.md.
@@ -153,7 +218,7 @@ def dispatch_to_agent(text: str, jid: str, msg_id: str):
     hooks_url = "http://127.0.0.1:18789/hooks/agent"
 
     full_message = (
-        f"[WA_INBOUND] from_jid={jid} msg_id={msg_id}\n"
+        f"[WA_INBOUND] from_jid={jid} msg_id={mid}\n"
         f"Mensagem do dono: {text}\n\n"
         f"Instrucoes: Leia prompts/conversa.md e responda esta mensagem. "
         f"Depois de formular a resposta, envie via: "
@@ -180,7 +245,7 @@ def dispatch_to_agent(text: str, jid: str, msg_id: str):
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             body = resp.read().decode()
-            log(f"dispatch OK: msg_id={msg_id} -> {resp.status} {body[:100]}")
+            log(f"dispatch OK: msg_id={mid} -> {resp.status} {body[:100]}")
     except urllib.error.HTTPError as e:
         log(f"dispatch HTTP error {e.code}: {e.read().decode()[:200]}")
     except Exception as e:
@@ -206,29 +271,29 @@ def run():
             msgs = poll_messages(last_ts, own_jid)
             new_ts = last_ts
             for msg in msgs:
-                msg_id = msg.get("id") or msg.get("ID") or msg.get("messageId")
-                if not msg_id:
+                mid = msg_id(msg)  # PascalCase-aware (bug 4)
+                if not mid:
                     continue
-                if msg_id in seen_ids:
+                if mid in seen_ids:
                     continue
 
                 if not is_from_owner(msg, own_jid):
-                    seen_ids.add(msg_id)
+                    seen_ids.add(mid)
                     continue
 
                 text = extract_text(msg)
                 if not text:
-                    seen_ids.add(msg_id)
+                    seen_ids.add(mid)
                     continue
 
                 log(f"Nova mensagem do dono: {text[:80]}")
 
                 append_thread(own_jid, "user", text)
-                dispatch_to_agent(text, own_jid, msg_id)
+                dispatch_to_agent(text, own_jid, mid)
 
-                seen_ids.add(msg_id)
+                seen_ids.add(mid)
 
-                msg_ts = msg.get("timestamp") or msg.get("ts") or msg.get("time")
+                msg_ts = msg_timestamp(msg)  # PascalCase-aware (bug 4)
                 if msg_ts:
                     if isinstance(msg_ts, (int, float)):
                         msg_ts = datetime.fromtimestamp(msg_ts, tz=timezone.utc).isoformat()
