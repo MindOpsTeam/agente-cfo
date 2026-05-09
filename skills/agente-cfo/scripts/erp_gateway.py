@@ -3,6 +3,20 @@
 ERP Gateway — ponto de entrada generico para qualquer skill ERP.
 Uso: python3 erp_gateway.py <command> [args...]
 Le CFO_ERP_NAME do .env, instancia o client correto, executa o comando.
+
+Comandos suportados (via BaseERPClient):
+  get_balance
+  list_receivables [--from DATE] [--to DATE] [--limit N] [--page N]
+  list_payables    [--from DATE] [--to DATE] [--limit N] [--page N]
+  list_overdue
+  get_cash_projection [--days N]   # Sprint 7: projeção 30/90 dias de caixa
+  company_info
+  pay_payable      --id ID
+  mark_received    --id ID
+  create_payable   --amount N --due_date DATE --supplier NAME [--category C]
+  create_receivable --amount N --due_date DATE --customer NAME [--category C]
+  cancel_payable   --id ID
+  update_category  --id ID --category C [--record_type payable|receivable]
 """
 import os
 import sys

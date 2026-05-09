@@ -32,6 +32,12 @@ diga "dado indisponível" no lugar. Nunca faça estimativas ou suposições num�
    ```
    Filtre: apenas lançamentos com `due_date` igual a hoje e `status` != "paid".
 
+4. **Projeção de caixa — próximos 30 dias:**
+   ```
+   python3 $SCRIPTS_DIR/erp_gateway.py get_cash_projection --days 30
+   ```
+   Se retornar `{"error": ...}`, omita a seção PROJEÇÃO 30 DIAS da mensagem.
+
 ## Formato Exato da Mensagem WhatsApp
 
 A mensagem deve seguir **exatamente** este formato. Substitua os valores pelos dados reais.
@@ -59,6 +65,17 @@ Saldo disponível: R$ [VALOR ou "indisponível"]
 [Se houver contas a receber vencidas (anteriores a hoje, não recebidas):]
 Inadimplência em aberto: R$ [TOTAL] de [N] clientes
 [Se não houver:] Sem inadimplência em aberto.
+
+[INCLUIR SOMENTE SE get_cash_projection retornou dados sem erro:]
+📊 PROJEÇÃO 30 DIAS
+Entradas previstas: R$ [incoming_brl]
+Saídas previstas:  R$ [outgoing_brl]
+Saldo projetado:   R$ [projected_balance_brl]
+[Se projected_balance_brl < 0:]
+🚨 Projeção negativa! Revise pagamentos ou antecipe recebimentos.
+[Se projected_balance_brl >= 0:]
+Caixa projetado positivo para os próximos 30 dias.
+[Se erro ou CRM ausente: omitir seção completamente]
 
 Bom dia e boas vendas! 💼
 ```
