@@ -175,7 +175,7 @@ def load_crm_client() -> Any | None:
 # ── Rule loader ───────────────────────────────────────────────────────────────
 
 RULE_MODULES = [
-    ("proactive_rules.rule_overdue_critical",   "RuleOverdueCritical"),
+    ("proactive_rules.rule_overdue_critical",    "RuleOverdueCritical"),
     ("proactive_rules.rule_cash_low",            "RuleCashLow"),
     ("proactive_rules.rule_concentration",       "RuleConcentration"),
     ("proactive_rules.rule_inadimplencia_high",  "RuleInadimplenciaHigh"),
@@ -183,6 +183,12 @@ RULE_MODULES = [
     ("proactive_rules.rule_pipeline_drop",       "RulePipelineDrop"),
     ("proactive_rules.rule_pipeline_health",     "RulePipelineHealth"),   # Sprint 6
     ("proactive_rules.rule_erp_api_health",      "RuleERPApiHealth"),
+    # Sprint 13 — cobrança
+    ("proactive_rules.rule_overdue_to_collect",  "RuleOverdueToCollect"),
+    # Sprint 13 — e-commerce
+    ("proactive_rules.rule_low_stock",           "RuleLowStock"),
+    ("proactive_rules.rule_sales_drop",          "RuleSalesDrop"),
+    ("proactive_rules.rule_unfulfilled_orders",  "RuleUnfulfilledOrders"),
 ]
 
 
