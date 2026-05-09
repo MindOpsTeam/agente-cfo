@@ -44,6 +44,12 @@ apenas some o que está explicitamente nos dados de contas a receber/pagar dos p
    ```
    Filtre: `status != "paid"`. Some os valores por dia.
 
+6. **Projeção pipeline CRM (somente se CFO_CRM_NAME != "nenhum"):**
+   ```
+   python3 $SCRIPTS_DIR/crm_gateway.py get_pipeline_projection --days 30
+   ```
+   Se retornar `{"error": ...}`, omita a seção PIPELINE da mensagem.
+
 ## Formato Exato da Mensagem WhatsApp
 
 Siga **exatamente** este formato. Não use markdown com # ou ** — WhatsApp não renderiza.
@@ -64,6 +70,15 @@ Saldo atual: R$ [SALDO_DISPONIVEL ou "indisponível"]
 [Se saldo atual + projeção de entradas < projeção de saídas nos próximos 7 dias:]
 🚨 ATENÇÃO: Risco de caixa negativo em [DATA]. Entradas previstas insuficientes.
 [Se não houver risco:] Caixa projetado positivo para os próximos 7 dias.
+
+[INCLUIR SOMENTE SE CRM CONFIGURADO E RETORNOU DADOS:]
+📈 PIPELINE — PRÓXIMOS 30 DIAS
+Fechamentos esperados: R$ [expected_close_brl] ([expected_close_count] deals)
+[Se overdue_close_count > 0:]
+⚠️ [overdue_close_count] deal(s) com data de fechamento vencida (R$ [overdue_close_brl])
+[Se by_week tiver semanas com deals, liste até 2 semanas com maior valor:]
+Sem. [N]: R$ [expected_close_brl] ([deal_count] deals)
+[Se CRM não configurado ou erro: omitir seção completamente]
 
 Até amanhã! 💼
 ```

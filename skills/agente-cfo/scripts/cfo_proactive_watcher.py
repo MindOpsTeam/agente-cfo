@@ -181,6 +181,7 @@ RULE_MODULES = [
     ("proactive_rules.rule_inadimplencia_high",  "RuleInadimplenciaHigh"),
     ("proactive_rules.rule_deal_stale",          "RuleDealStale"),
     ("proactive_rules.rule_pipeline_drop",       "RulePipelineDrop"),
+    ("proactive_rules.rule_pipeline_health",     "RulePipelineHealth"),   # Sprint 6
     ("proactive_rules.rule_erp_api_health",      "RuleERPApiHealth"),
 ]
 

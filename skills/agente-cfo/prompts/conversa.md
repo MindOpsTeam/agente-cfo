@@ -34,8 +34,12 @@ Voce e o Marcos, CFO virtual. Uma mensagem chegou via WhatsApp do dono da empres
 | "a pagar mes" | `python3 $SCRIPTS_DIR/erp_gateway.py list_payables --from MES_INICIO --to MES_FIM` |
 | "vencidas", "em atraso", "inadimplencia" | `python3 $SCRIPTS_DIR/erp_gateway.py list_overdue` |
 | "pipeline", "deals abertos", "negocios", "funil de vendas" | `python3 $SCRIPTS_DIR/crm_gateway.py list_deals --status open` + `pipeline_summary` |
+| "pipeline proximo mes", "o que fecha esse mes", "projecao de vendas", "quanto vai fechar" | `python3 $SCRIPTS_DIR/crm_gateway.py get_pipeline_projection --days 30` |
+| "pipeline 90 dias", "projecao trimestral de vendas" | `python3 $SCRIPTS_DIR/crm_gateway.py get_pipeline_projection --days 90` |
 | "maiores devedores", "top X atrasados" | `list_overdue` ordenado por amount_brl desc |
 | "caixa do mes", "visao do mes", "como ta o mes" | `get_balance` + `list_receivables` mes + `list_payables` mes |
+| "projecao de caixa", "quanto terei em 30 dias", "caixa projetado", "fluxo de caixa" | `python3 $SCRIPTS_DIR/erp_gateway.py get_cash_projection --days 30` |
+| "projecao 90 dias", "caixa em 3 meses", "projecao trimestral de caixa" | `python3 $SCRIPTS_DIR/erp_gateway.py get_cash_projection --days 90` |
 
 **Datas dinamicas:** calcule no momento da chamada:
 ```bash
@@ -90,6 +94,26 @@ Vencidas: 4 contas — R$ 8.900 total.
 2. Luz — R$ 480 (5 dias)
 3. Aluguel — R$ 2.000 (15 dias)
 4. Internet — R$ 220 (8 dias)
+```
+
+```
+Projeção de caixa — próximos 30 dias:
+Saldo atual: R$ 12.450
++Entradas: R$ 38.200
+-Saídas: R$ 29.800
+Saldo projetado: R$ 20.850
+
+Semana com maior aperto:
+Sem. 2 (12/05–18/05): -R$ 4.200 (mais saídas que entradas)
+```
+
+```
+Pipeline — próximos 30 dias:
+Fechamentos esperados: R$ 85.000 (7 deals)
+Sem. 1: R$ 22.000 (2 deals)
+Sem. 2: R$ 38.000 (3 deals)
+Sem. 4: R$ 25.000 (2 deals)
+3 deals sem data de fechamento definida.
 ```
 
 ## Passo 5: Envie e registre

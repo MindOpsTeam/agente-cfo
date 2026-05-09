@@ -230,6 +230,95 @@ class BaseERPClient(ABC):
         ]
         return make_list_response(overdue, total_count=len(overdue))
 
+    def get_cash_projection(self, days: int = 30) -> dict:
+        """
+        Projeção de fluxo de caixa para os próximos N dias (padrão: 30).
+        Retorna saldo atual + entradas previstas - saídas previstas, com breakdown semanal.
+
+        Returns:
+        {
+            "projection_days": int,
+            "balance_brl": float,
+            "incoming_brl": float,           # total a receber no período
+            "outgoing_brl": float,           # total a pagar no período
+            "projected_balance_brl": float,  # balance + incoming - outgoing
+            "by_week": [
+                {
+                    "week": N,
+                    "from": "YYYY-MM-DD",
+                    "to": "YYYY-MM-DD",
+                    "incoming_brl": float,
+                    "outgoing_brl": float,
+                    "net_brl": float,
+                },
+                ...
+            ],
+            "as_of": ISO8601,
+        }
+        """
+        from datetime import date, timedelta
+
+        today = date.today()
+        end_date = today + timedelta(days=days)
+        today_str = today.isoformat()
+        end_str = end_date.isoformat()
+
+        balance_resp = self.get_balance()
+        balance = float(balance_resp.get("balance_brl", 0.0))
+
+        recv_resp = self.list_receivables(from_date=today_str, to_date=end_str, limit=500)
+        pay_resp = self.list_payables(from_date=today_str, to_date=end_str, limit=500)
+
+        receivables = [
+            i for i in recv_resp.get("items", [])
+            if i.get("status") in ("pending", "overdue")
+        ]
+        payables = [
+            i for i in pay_resp.get("items", [])
+            if i.get("status") in ("pending", "overdue")
+        ]
+
+        incoming = sum(float(i.get("amount_brl", 0.0)) for i in receivables)
+        outgoing = sum(float(i.get("amount_brl", 0.0)) for i in payables)
+        projected = balance + incoming - outgoing
+
+        # Breakdown semanal
+        weeks = []
+        week_num = 1
+        cur = today
+        while cur < end_date:
+            w_end = min(cur + timedelta(days=6), end_date - timedelta(days=1))
+            w_start_str = cur.isoformat()
+            w_end_str = w_end.isoformat()
+            w_inc = sum(
+                float(i.get("amount_brl", 0.0)) for i in receivables
+                if w_start_str <= (i.get("due_date") or "9999") <= w_end_str
+            )
+            w_out = sum(
+                float(i.get("amount_brl", 0.0)) for i in payables
+                if w_start_str <= (i.get("due_date") or "9999") <= w_end_str
+            )
+            weeks.append({
+                "week": week_num,
+                "from": w_start_str,
+                "to": w_end_str,
+                "incoming_brl": round(w_inc, 2),
+                "outgoing_brl": round(w_out, 2),
+                "net_brl": round(w_inc - w_out, 2),
+            })
+            cur = w_end + timedelta(days=1)
+            week_num += 1
+
+        return {
+            "projection_days": days,
+            "balance_brl": round(balance, 2),
+            "incoming_brl": round(incoming, 2),
+            "outgoing_brl": round(outgoing, 2),
+            "projected_balance_brl": round(projected, 2),
+            "by_week": weeks,
+            "as_of": now_iso(),
+        }
+
     def company_info(self) -> dict:
         return {"name": "N/A", "cnpj": None, "segment": None}
 
@@ -310,6 +399,8 @@ class BaseERPClient(ABC):
                     category=kwargs.get("category", ""),
                     record_type=kwargs.get("record_type", "payable"),
                 ))
+            elif command == "get_cash_projection":
+                emit(self.get_cash_projection(days=int(kwargs.get("days", 30))))
             else:
                 emit_error(f"Comando desconhecido: {command}", code="unknown_command")
         except NotImplementedError as e:
@@ -348,6 +439,116 @@ class BaseCRMClient(ABC):
             by_stage[stage]["count"] += 1
             by_stage[stage]["total_brl"] += amt
         return {"total_open_brl": round(total_open, 2), "deal_count": len(deals["items"]), "by_stage": by_stage}
+
+    def get_pipeline_projection(self, horizon_days: int = 30) -> dict:
+        """
+        Projeção de fechamentos esperados no pipeline para os próximos N dias.
+
+        Considera deals com status="open" cujo expected_close_date cai dentro
+        do horizonte. Não inclui deals sem data de fechamento prevista.
+
+        Returns:
+        {
+            "horizon_days": int,
+            "total_open_brl": float,       # total pipeline aberto
+            "open_deal_count": int,
+            "expected_close_brl": float,   # soma dos deals com close dentro do horizonte
+            "expected_close_count": int,
+            "overdue_close_brl": float,    # deals com close_date < hoje (em atraso)
+            "overdue_close_count": int,
+            "by_week": [
+                {
+                    "week": N,
+                    "from": "YYYY-MM-DD",
+                    "to": "YYYY-MM-DD",
+                    "expected_close_brl": float,
+                    "deal_count": int,
+                    "deals": [{"id", "title", "amount_brl", "stage", "expected_close_date"}]
+                },
+                ...
+            ],
+            "no_close_date_brl": float,    # deals sem expected_close_date
+            "no_close_date_count": int,
+            "as_of": ISO8601,
+        }
+        """
+        from datetime import date, timedelta
+
+        today = date.today()
+        end_date = today + timedelta(days=horizon_days)
+        today_str = today.isoformat()
+        end_str = end_date.isoformat()
+
+        deals_resp = self.list_deals(status="open", limit=500)
+        deals = deals_resp.get("items", [])
+
+        total_open = sum(float(d.get("amount_brl") or 0.0) for d in deals)
+
+        expected_deals = []
+        overdue_deals = []
+        no_date_deals = []
+
+        for d in deals:
+            close = d.get("expected_close_date") or ""
+            if not close:
+                no_date_deals.append(d)
+                continue
+            close_str = str(close)[:10]
+            if close_str < today_str:
+                overdue_deals.append(d)
+            elif close_str <= end_str:
+                expected_deals.append(d)
+            # else: besides the horizon — ignore for projection
+
+        expected_close_brl = sum(float(d.get("amount_brl") or 0.0) for d in expected_deals)
+        overdue_close_brl = sum(float(d.get("amount_brl") or 0.0) for d in overdue_deals)
+        no_close_brl = sum(float(d.get("amount_brl") or 0.0) for d in no_date_deals)
+
+        # Breakdown semanal
+        weeks = []
+        week_num = 1
+        cur = today
+        while cur <= end_date:
+            w_end = min(cur + timedelta(days=6), end_date)
+            w_start_str = cur.isoformat()
+            w_end_str = w_end.isoformat()
+            w_deals = [
+                d for d in expected_deals
+                if w_start_str <= str(d.get("expected_close_date") or "")[:10] <= w_end_str
+            ]
+            weeks.append({
+                "week": week_num,
+                "from": w_start_str,
+                "to": w_end_str,
+                "expected_close_brl": round(sum(float(d.get("amount_brl") or 0.0) for d in w_deals), 2),
+                "deal_count": len(w_deals),
+                "deals": [
+                    {
+                        "id": d.get("id"),
+                        "title": d.get("title"),
+                        "amount_brl": d.get("amount_brl"),
+                        "stage": d.get("stage"),
+                        "expected_close_date": d.get("expected_close_date"),
+                    }
+                    for d in w_deals
+                ],
+            })
+            cur = w_end + timedelta(days=1)
+            week_num += 1
+
+        return {
+            "horizon_days": horizon_days,
+            "total_open_brl": round(total_open, 2),
+            "open_deal_count": len(deals),
+            "expected_close_brl": round(expected_close_brl, 2),
+            "expected_close_count": len(expected_deals),
+            "overdue_close_brl": round(overdue_close_brl, 2),
+            "overdue_close_count": len(overdue_deals),
+            "no_close_date_brl": round(no_close_brl, 2),
+            "no_close_date_count": len(no_date_deals),
+            "by_week": weeks,
+            "as_of": now_iso(),
+        }
 
     def company_info(self) -> dict:
         return {"name": "N/A"}
@@ -399,6 +600,8 @@ class BaseCRMClient(ABC):
                 emit(self.mark_deal_won(id=kwargs.get("id", "")))
             elif command == "mark_deal_lost":
                 emit(self.mark_deal_lost(id=kwargs.get("id", ""), reason=kwargs.get("reason", "")))
+            elif command == "get_pipeline_projection":
+                emit(self.get_pipeline_projection(horizon_days=int(kwargs.get("days", 30))))
             else:
                 emit_error(f"Comando desconhecido: {command}", code="unknown_command")
         except NotImplementedError as e:

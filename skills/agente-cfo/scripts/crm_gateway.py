@@ -3,6 +3,18 @@
 CRM Gateway — ponto de entrada generico para qualquer skill CRM.
 Uso: python3 crm_gateway.py <command> [args...]
 Le CFO_CRM_NAME do .env, instancia o client correto, executa o comando.
+
+Comandos suportados (via BaseCRMClient):
+  list_deals [--status open|won|lost] [--limit N] [--page N]
+  pipeline_summary
+  get_pipeline_projection [--days N]   # Sprint 6: projeção de fechamentos N dias
+  company_info
+  move_deal --id ID --to_stage STAGE
+  update_deal --id ID [--amount N] [--close_date DATE]
+  create_deal --title TITLE [--amount N] [--pipeline P]
+  add_deal_note --id ID --note TEXT
+  mark_deal_won --id ID
+  mark_deal_lost --id ID [--reason TEXT]
 """
 import os
 import sys
