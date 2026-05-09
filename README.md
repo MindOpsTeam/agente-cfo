@@ -1,6 +1,11 @@
 # Agente CFO
 
-CFO virtual para PME brasileira. Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, gerando insights de fluxo de caixa e alertas diários sem intervenção manual.
+> CFO virtual para PME brasileira — alertas financeiros no WhatsApp, sem planilha, sem dashboard para abrir.
+
+[![10 integrações](https://img.shields.io/badge/integrações-10%20ERPs%2FCRMs-blue)](#integrações-suportadas)
+[![Template gratuito](https://img.shields.io/badge/template-gratuito-green)](https://lovable.dev/projects/ddcd382f-f68a-478d-a2a5-811a860ba83c)
+
+Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, gerando insights de fluxo de caixa e alertas proativos sem intervenção manual.
 
 **Template gratuito de cópia** — distribuído para alunos da plataforma [Viver de IA](https://viverdeia.ai). Cada cliente roda na infra dele: VPS própria, Supabase próprio (via Lovable Cloud), Anthropic key própria.
 
@@ -8,10 +13,21 @@ CFO virtual para PME brasileira. Conecta o **ERP/CRM** da empresa ao **WhatsApp*
 
 ## O que o Agente CFO faz
 
-- **07:00** — Resumo matinal: saldo atual, contas a receber hoje, contas a pagar hoje, inadimplência
-- **18:00** — Fechamento do dia + projeção de caixa para os próximos 7 dias
-- **Alertas automáticos** quando WhatsApp desconectar ou orçamento LLM for excedido
+- **07:00** — Resumo matinal: saldo atual, contas a receber hoje, contas a pagar hoje, inadimplência, projeção de caixa 30 dias
+- **18:00** — Fechamento do dia + projeção 7 dias + pipeline CRM (se configurado)
+- **Alertas proativos** automáticos: caixa baixo, inadimplência alta, pipeline em queda, deals parados
+- **Conversa via WhatsApp** — responde perguntas financeiras em linguagem natural ("qual meu saldo?", "quem vence hoje?")
 - **Painel web** (Lovable Cloud) com histórico de eventos, uso de tokens e push de comandos para a VPS
+
+## Documentação
+
+| Doc | Conteúdo |
+|---|---|
+| [docs/INSTALACAO.md](docs/INSTALACAO.md) | Onboarding passo a passo — painel Lovable ou setup manual |
+| [docs/INTEGRACOES.md](docs/INTEGRACOES.md) | Como conectar cada ERP e CRM (credenciais, capacidades, limitações) |
+| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | WhatsApp não pareia? Gateway não sobe? Resolva aqui |
+| [docs/FAQ.md](docs/FAQ.md) | Perguntas frequentes — custos, segurança, dados, backups |
+| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Visão técnica: stack, diagramas de fluxo, BaseERPClient |
 
 ---
 
@@ -80,12 +96,14 @@ curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install
 
 O instalador vai:
 1. Instalar OpenClaw, wacli e cloudflared
-2. Coletar suas credenciais (Omie, WhatsApp, Anthropic)
+2. Coletar suas credenciais (ERP, WhatsApp, Anthropic)
 3. **Gerar um `PANEL_TOKEN`** e pausar para você configurá-lo como secret no Supabase
 4. Parear o WhatsApp (QR code no terminal)
 5. Subir um Cloudflare Tunnel para o painel enviar comandos para a VPS
-6. Registrar os cron jobs de alerta
-7. Rodar o diagnóstico final
+6. Registrar os cron jobs de alerta (07:00 e 18:00)
+7. Rodar o diagnóstico final (`doctor.sh`)
+
+> Guia completo com pré-requisitos, etapas e verificações: **[docs/INSTALACAO.md](docs/INSTALACAO.md)**
 
 ---
 
