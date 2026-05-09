@@ -610,3 +610,370 @@ class BaseCRMClient(ABC):
             emit_error(str(e))
         except Exception as e:
             emit_error(f"Erro interno: {e}", code="internal_error")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BaseCobrancaClient — Plataformas de cobrança (Asaas, Iugu)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_invoice_item(
+    id: str,
+    customer_id: str,
+    customer_name: str,
+    due_date: str,
+    amount_brl: float,
+    status: str,
+    payment_url: str | None = None,
+    description: str | None = None,
+    raw: dict | None = None,
+) -> dict:
+    return {
+        "id": str(id),
+        "customer_id": str(customer_id),
+        "customer_name": customer_name,
+        "due_date": due_date,
+        "amount_brl": float(amount_brl),
+        "status": status,
+        "payment_url": payment_url,
+        "description": description,
+        "raw": raw or {},
+    }
+
+
+def make_overdue_customer(
+    customer_id: str,
+    customer_name: str,
+    total_overdue_brl: float,
+    oldest_due_date: str,
+    invoice_count: int,
+    phone: str | None = None,
+    email: str | None = None,
+    raw: dict | None = None,
+) -> dict:
+    return {
+        "customer_id": str(customer_id),
+        "customer_name": customer_name,
+        "total_overdue_brl": round(float(total_overdue_brl), 2),
+        "oldest_due_date": oldest_due_date,
+        "invoice_count": invoice_count,
+        "phone": phone,
+        "email": email,
+        "raw": raw or {},
+    }
+
+
+class BaseCobrancaClient(ABC):
+    """ABC para plataformas de cobrança (Asaas, Iugu, etc.)."""
+
+    SKILL_NAME: str = ""
+
+    def __init__(self):
+        load_secrets(self.SKILL_NAME)
+        self._validate_env()
+
+    @abstractmethod
+    def _validate_env(self) -> None: ...
+
+    @abstractmethod
+    def list_invoices(
+        self,
+        status: str = "open",
+        customer_id: str | None = None,
+        limit: int = 50,
+        page: int = 1,
+    ) -> dict:
+        """status: open|paid|overdue|cancelled|all. Returns make_list_response([make_invoice_item(...)])"""
+        ...
+
+    @abstractmethod
+    def get_invoice(self, id: str) -> dict:
+        """Returns make_invoice_item(...)"""
+        ...
+
+    @abstractmethod
+    def get_customer(self, id: str) -> dict:
+        """Returns {"id", "name", "phone", "email", "cpf_cnpj", "raw"}"""
+        ...
+
+    def get_overdue_customers(self) -> dict:
+        """Consolida inadimplentes agrupados por cliente, ordenado por total desc."""
+        invoices_resp = self.list_invoices(status="overdue", limit=500)
+        by_customer: dict[str, dict] = {}
+        for inv in invoices_resp.get("items", []):
+            cid = inv.get("customer_id", "unknown")
+            if cid not in by_customer:
+                by_customer[cid] = {
+                    "customer_id": cid,
+                    "customer_name": inv.get("customer_name", ""),
+                    "total_overdue_brl": 0.0,
+                    "oldest_due_date": inv.get("due_date", ""),
+                    "invoice_count": 0,
+                    "phone": None,
+                    "email": None,
+                    "raw": {},
+                }
+            entry = by_customer[cid]
+            entry["total_overdue_brl"] += float(inv.get("amount_brl", 0.0))
+            entry["invoice_count"] += 1
+            if inv.get("due_date", "") < entry["oldest_due_date"] or not entry["oldest_due_date"]:
+                entry["oldest_due_date"] = inv.get("due_date", "")
+
+        customers = sorted(by_customer.values(), key=lambda x: -x["total_overdue_brl"])
+        for c in customers[:10]:
+            try:
+                cd = self.get_customer(c["customer_id"])
+                c["phone"] = cd.get("phone")
+                c["email"] = cd.get("email")
+            except Exception:
+                pass
+
+        items = [make_overdue_customer(**{k: v for k, v in c.items()}) for c in customers]
+        return make_list_response(items, total_count=len(items))
+
+    def get_payment_methods(self) -> dict:
+        return {"methods": ["pix", "boleto", "credit_card"]}
+
+    def company_info(self) -> dict:
+        return {"name": "N/A", "segment": "cobranca"}
+
+    def send_payment_link(self, invoice_id: str, channel: str = "whatsapp", custom_message: str | None = None) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: send_payment_link nao implementado")
+
+    def mark_invoice_paid_manually(self, id: str) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: mark_invoice_paid_manually nao implementado")
+
+    def create_invoice(self, customer_id: str, amount: float, due_date: str, description: str = "", **kwargs) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: create_invoice nao implementado")
+
+    def cancel_invoice(self, id: str) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: cancel_invoice nao implementado")
+
+    def send_reminder(self, customer_id: str, message: str) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: send_reminder nao implementado")
+
+    def run_cli(self) -> None:
+        command, kwargs = parse_cli_args()
+        try:
+            if command == "list_invoices":
+                emit(self.list_invoices(
+                    status=kwargs.get("status", "open"),
+                    customer_id=kwargs.get("customer_id"),
+                    limit=int(kwargs.get("limit", 50)),
+                    page=int(kwargs.get("page", 1)),
+                ))
+            elif command == "get_invoice":
+                emit(self.get_invoice(id=kwargs.get("id", "")))
+            elif command == "get_customer":
+                emit(self.get_customer(id=kwargs.get("id", "")))
+            elif command == "get_overdue_customers":
+                emit(self.get_overdue_customers())
+            elif command == "get_payment_methods":
+                emit(self.get_payment_methods())
+            elif command == "company_info":
+                emit(self.company_info())
+            elif command == "send_payment_link":
+                emit(self.send_payment_link(
+                    invoice_id=kwargs.get("invoice_id", ""),
+                    channel=kwargs.get("channel", "whatsapp"),
+                    custom_message=kwargs.get("custom_message"),
+                ))
+            elif command == "mark_invoice_paid_manually":
+                emit(self.mark_invoice_paid_manually(id=kwargs.get("id", "")))
+            elif command == "create_invoice":
+                emit(self.create_invoice(
+                    customer_id=kwargs.get("customer_id", ""),
+                    amount=float(kwargs.get("amount", 0)),
+                    due_date=kwargs.get("due_date", ""),
+                    description=kwargs.get("description", ""),
+                ))
+            elif command == "cancel_invoice":
+                emit(self.cancel_invoice(id=kwargs.get("id", "")))
+            elif command == "send_reminder":
+                emit(self.send_reminder(
+                    customer_id=kwargs.get("customer_id", ""),
+                    message=kwargs.get("message", ""),
+                ))
+            else:
+                emit_error(f"Comando desconhecido: {command}", code="unknown_command")
+        except NotImplementedError as e:
+            emit({"error": "not_supported", "message": str(e)})
+        except RuntimeError as e:
+            emit_error(str(e))
+        except Exception as e:
+            emit_error(f"Erro interno: {e}", code="internal_error")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BaseEcommerceClient — Plataformas de e-commerce (Mercado Livre, Nuvemshop)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def make_order_item(
+    id: str,
+    status: str,
+    amount_brl: float,
+    customer_name: str,
+    created_at: str,
+    items_count: int = 1,
+    tracking_code: str | None = None,
+    raw: dict | None = None,
+) -> dict:
+    return {
+        "id": str(id),
+        "status": status,
+        "amount_brl": round(float(amount_brl), 2),
+        "customer_name": customer_name,
+        "created_at": created_at,
+        "items_count": items_count,
+        "tracking_code": tracking_code,
+        "raw": raw or {},
+    }
+
+
+def make_product_item(
+    id: str,
+    name: str,
+    sku: str | None,
+    price_brl: float,
+    stock_qty: int,
+    active: bool = True,
+    raw: dict | None = None,
+) -> dict:
+    return {
+        "id": str(id),
+        "name": name,
+        "sku": sku,
+        "price_brl": round(float(price_brl), 2),
+        "stock_qty": int(stock_qty),
+        "active": active,
+        "raw": raw or {},
+    }
+
+
+class BaseEcommerceClient(ABC):
+    """ABC para plataformas de e-commerce (Mercado Livre, Nuvemshop, etc.)."""
+
+    SKILL_NAME: str = ""
+
+    def __init__(self):
+        load_secrets(self.SKILL_NAME)
+        self._validate_env()
+
+    @abstractmethod
+    def _validate_env(self) -> None: ...
+
+    @abstractmethod
+    def list_orders(self, status: str = "paid", limit: int = 50, since: str | None = None) -> dict:
+        """status: pending|paid|shipped|delivered|cancelled|all. Returns make_list_response([make_order_item(...)])"""
+        ...
+
+    @abstractmethod
+    def get_order(self, id: str) -> dict:
+        """Returns make_order_item(...)"""
+        ...
+
+    @abstractmethod
+    def list_products(self, limit: int = 50, in_stock_only: bool = False) -> dict:
+        """Returns make_list_response([make_product_item(...)])"""
+        ...
+
+    @abstractmethod
+    def get_product(self, id: str) -> dict:
+        """Returns make_product_item(...)"""
+        ...
+
+    def get_low_stock(self, threshold: int = 5) -> dict:
+        """Produtos com stock_qty <= threshold, ordenados por qty asc."""
+        products = self.list_products(limit=500)
+        low = [
+            p for p in products.get("items", [])
+            if p.get("stock_qty", 0) <= threshold and p.get("active", True)
+        ]
+        low.sort(key=lambda x: x.get("stock_qty", 0))
+        return make_list_response(low, total_count=len(low))
+
+    def get_sales_metrics(self, days: int = 30) -> dict:
+        """Métricas de vendas dos últimos N dias."""
+        from datetime import date, timedelta
+        since = (date.today() - timedelta(days=days)).isoformat()
+        orders_resp = self.list_orders(status="all", limit=500, since=since)
+        orders = orders_resp.get("items", [])
+        paid = [o for o in orders if o.get("status") in ("paid", "shipped", "delivered")]
+        cancelled = [o for o in orders if o.get("status") == "cancelled"]
+        total_rev = sum(float(o.get("amount_brl", 0.0)) for o in paid)
+        avg_ticket = total_rev / len(paid) if paid else 0.0
+        return {
+            "period_days": days,
+            "total_orders": len(paid),
+            "total_revenue_brl": round(total_rev, 2),
+            "avg_ticket_brl": round(avg_ticket, 2),
+            "cancelled_orders": len(cancelled),
+            "as_of": now_iso(),
+        }
+
+    def company_info(self) -> dict:
+        return {"name": "N/A", "segment": "ecommerce"}
+
+    def update_stock(self, product_id: str, new_qty: int) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: update_stock nao implementado")
+
+    def mark_order_shipped(self, id: str, tracking_code: str = "") -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: mark_order_shipped nao implementado")
+
+    def update_price(self, product_id: str, new_price: float) -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: update_price nao implementado")
+
+    def cancel_order(self, id: str, reason: str = "") -> dict:
+        raise NotImplementedError(f"{self.SKILL_NAME}: cancel_order nao implementado")
+
+    def run_cli(self) -> None:
+        command, kwargs = parse_cli_args()
+        try:
+            if command == "list_orders":
+                emit(self.list_orders(
+                    status=kwargs.get("status", "paid"),
+                    limit=int(kwargs.get("limit", 50)),
+                    since=kwargs.get("since"),
+                ))
+            elif command == "get_order":
+                emit(self.get_order(id=kwargs.get("id", "")))
+            elif command == "list_products":
+                emit(self.list_products(
+                    limit=int(kwargs.get("limit", 50)),
+                    in_stock_only=kwargs.get("in_stock_only", "false").lower() == "true",
+                ))
+            elif command == "get_product":
+                emit(self.get_product(id=kwargs.get("id", "")))
+            elif command == "get_low_stock":
+                emit(self.get_low_stock(threshold=int(kwargs.get("threshold", 5))))
+            elif command == "get_sales_metrics":
+                emit(self.get_sales_metrics(days=int(kwargs.get("days", 30))))
+            elif command == "company_info":
+                emit(self.company_info())
+            elif command == "update_stock":
+                emit(self.update_stock(
+                    product_id=kwargs.get("product_id", ""),
+                    new_qty=int(kwargs.get("new_qty", 0)),
+                ))
+            elif command == "mark_order_shipped":
+                emit(self.mark_order_shipped(
+                    id=kwargs.get("id", ""),
+                    tracking_code=kwargs.get("tracking_code", ""),
+                ))
+            elif command == "update_price":
+                emit(self.update_price(
+                    product_id=kwargs.get("product_id", ""),
+                    new_price=float(kwargs.get("new_price", 0)),
+                ))
+            elif command == "cancel_order":
+                emit(self.cancel_order(
+                    id=kwargs.get("id", ""),
+                    reason=kwargs.get("reason", ""),
+                ))
+            else:
+                emit_error(f"Comando desconhecido: {command}", code="unknown_command")
+        except NotImplementedError as e:
+            emit({"error": "not_supported", "message": str(e)})
+        except RuntimeError as e:
+            emit_error(str(e))
+        except Exception as e:
+            emit_error(f"Erro interno: {e}", code="internal_error")
