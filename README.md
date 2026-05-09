@@ -2,12 +2,23 @@
 
 > CFO virtual para PME brasileira — alertas financeiros no WhatsApp, sem planilha, sem dashboard para abrir.
 
+[![v1.0.0](https://img.shields.io/badge/versão-v1.0.0-brightgreen)](https://github.com/MindOpsTeam/agente-cfo/releases/tag/v1.0.0)
 [![14 integrações](https://img.shields.io/badge/integrações-14%20ERPs%2FCRMs%2FCobrança%2FEcommerce-blue)](#integrações-suportadas)
 [![Template gratuito](https://img.shields.io/badge/template-gratuito-green)](https://lovable.dev/projects/ddcd382f-f68a-478d-a2a5-811a860ba83c)
+
+> 🚀 **Quer instalar?** → Acesse o painel e siga o onboarding guiado: [lovable.dev/projects/ddcd382f-f68a-478d-a2a5-811a860ba83c](https://lovable.dev/projects/ddcd382f-f68a-478d-a2a5-811a860ba83c)
+>
+> 📖 **Cliente Viver de IA?** → Leia o [docs/CLIENTE.md](docs/CLIENTE.md) — guia plug-n-play sem jargão técnico.
+
+---
+
+> **v1.0 — template sem suporte dedicado e sem atualizações automáticas.** Distribuído como parte do catálogo gratuito da [Viver de IA](https://viverdeia.ai). Cada instalação é independente — você é dono da sua infra.
 
 Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, gerando insights de fluxo de caixa e alertas proativos sem intervenção manual.
 
 **Template gratuito de cópia** — distribuído para alunos da plataforma [Viver de IA](https://viverdeia.ai). Cada cliente roda na infra dele: VPS própria, Supabase próprio (via Lovable Cloud), Anthropic key própria.
+
+---
 
 ---
 
@@ -24,8 +35,9 @@ Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, geran
 
 | Doc | Conteúdo |
 |---|---|
+| [docs/CLIENTE.md](docs/CLIENTE.md) | **Guia do cliente** — plug-n-play, sem jargão técnico |
 | [docs/INSTALACAO.md](docs/INSTALACAO.md) | Onboarding passo a passo — painel Lovable ou setup manual |
-| [docs/INTEGRACOES.md](docs/INTEGRACOES.md) | Como conectar cada ERP e CRM (credenciais, capacidades, limitações) |
+| [docs/INTEGRACOES.md](docs/INTEGRACOES.md) | Como conectar cada ERP, CRM, cobrança e e-commerce |
 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | WhatsApp não pareia? Gateway não sobe? Resolva aqui |
 | [docs/FAQ.md](docs/FAQ.md) | Perguntas frequentes — custos, segurança, dados, backups |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | Visão técnica: stack, diagramas de fluxo, BaseERPClient |
@@ -133,12 +145,16 @@ agente-cfo/
 │   ├── tiny/                # Tiny ERP
 │   ├── granatum/            # Granatum
 │   ├── vhsys/               # VHSYS ERP
-│   ├── nibo/                # Nibo (Premium)
+│   ├── nibo/                # Nibo ERP (Premium)
 │   ├── contaazul/           # ContaAzul ERP (OAuth 2.0)
 │   ├── hubspot/             # HubSpot CRM
 │   ├── rd-station/          # RD Station CRM
 │   ├── piperun/             # PipeRun CRM
-│   └── pipedrive/           # Pipedrive CRM
+│   ├── pipedrive/           # Pipedrive CRM
+│   ├── asaas/               # Asaas — cobrança (Pix/Boleto)
+│   ├── iugu/                # Iugu — cobrança
+│   ├── mercado-livre/       # Mercado Livre e-commerce (OAuth 2.0)
+│   └── nuvemshop/           # Nuvemshop e-commerce (OAuth 2.0)
 ├── painel/
 │   └── supabase/
 │       ├── migrations/     # Schema do banco (single-tenant)
