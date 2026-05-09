@@ -706,23 +706,9 @@ fi
 # PASSO 11: Instalar skill agente-cfo
 # ─────────────────────────────────────────────────────────────────────────────
 step "11/13 — Skill agente-cfo"
-
-if [[ -d "$SKILL_DEST" && -f "$SKILL_DEST/SKILL.md" ]]; then
-    ok "Skill agente-cfo já instalada. Atualizando..."
-    git -C "$SKILL_DEST" pull --ff-only 2>/dev/null || warn "git pull falhou (ignorado)."
-else
-    info "Clonando skill de $SKILL_REPO..."
-    mkdir -p "$(dirname "$SKILL_DEST")"
-    git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" /tmp/agente-cfo-clone 2>/dev/null || \
-        fail "Falha ao clonar $SKILL_REPO — verifique se o repositório é público."
-    cd /tmp/agente-cfo-clone
-    git sparse-checkout set skills/agente-cfo
-    cp -r skills/agente-cfo "$SKILL_DEST"
-    cd / && rm -rf /tmp/agente-cfo-clone
-    ok "Skill agente-cfo instalada em $SKILL_DEST"
-fi
-
-chmod +x "$SKILL_DEST/scripts/"*.sh
+_install_skill_from_repo "agente-cfo"
+chmod +x $SKILL_DEST/scripts/*.sh 2>/dev/null || true
+ok "Skill agente-cfo instalada em $SKILL_DEST"
 
 # Agora que agente-cfo está instalada, podemos iniciar o wacli-inbound (bug 2 fix)
 # O script wacli_inbound.py precisa existir antes de o service subir.
