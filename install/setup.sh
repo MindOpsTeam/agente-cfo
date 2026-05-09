@@ -223,8 +223,8 @@ ask_choice() {
     export "$var_name"="${_choice:-$default}"
 }
 
-ask_choice "CFO_ERP_NAME" "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo" "omie"
-ask_choice "CFO_CRM_NAME" "Quer conectar um CRM?" "hubspot / rd-station / piperun / nenhum" "nenhum"
+ask_choice "CFO_ERP_NAME" "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo / contaazul" "omie"
+ask_choice "CFO_CRM_NAME" "Quer conectar um CRM?" "hubspot / rd-station / piperun / pipedrive / nenhum" "nenhum"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 4: PANEL_BASE_URL e PANEL_TOKEN

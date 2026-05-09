@@ -25,12 +25,14 @@ CFO virtual para PME brasileira. Conecta o **ERP/CRM** da empresa ao **WhatsApp*
 | ERP | **Granatum** | Access Token | [`skills/granatum`](skills/granatum/SKILL.md) |
 | ERP | **VHSYS** | Access Token + Secret Token | [`skills/vhsys`](skills/vhsys/SKILL.md) |
 | ERP | **Nibo** | API Token (plano Premium) | [`skills/nibo`](skills/nibo/SKILL.md) |
+| ERP | **ContaAzul** | OAuth 2.0 (refresh automático) | [`skills/contaazul`](skills/contaazul/SKILL.md) |
 | CRM | **HubSpot** | Private App Token | [`skills/hubspot`](skills/hubspot/SKILL.md) |
 | CRM | **RD Station CRM** | Token de integração | [`skills/rd-station`](skills/rd-station/SKILL.md) |
 | CRM | **PipeRun** | Token | [`skills/piperun`](skills/piperun/SKILL.md) |
+| CRM | **Pipedrive** | API Token + subdomínio | [`skills/pipedrive`](skills/pipedrive/SKILL.md) |
 
-Todas as skills ERP expõem a mesma interface (`get_balance`, `list_payables`, `list_receivables`, `list_overdue`, `company_info`).
-Skills CRM expõem `list_deals`, `pipeline_summary`, `company_info`.
+Todas as skills ERP expõem a mesma interface (`get_balance`, `list_payables`, `list_receivables`, `list_overdue`, `get_cash_projection`, `company_info`).
+Skills CRM expõem `list_deals`, `pipeline_summary`, `get_pipeline_projection`, `company_info`.
 
 O `setup.sh` pergunta qual ERP e CRM usar e configura automaticamente.
 
@@ -41,8 +43,8 @@ O `setup.sh` pergunta qual ERP e CRM usar e configura automaticamente.
 | Item | Detalhe |
 |---|---|
 | VPS Linux | Ubuntu 22.04+, mínimo 1 vCPU / 1 GB RAM |
-| ERP | Conta em um dos ERPs suportados (Omie, Bling, Tiny, Granatum, VHSYS ou Nibo) |
-| CRM (opcional) | Conta em HubSpot, RD Station CRM ou PipeRun |
+| ERP | Conta em um dos ERPs suportados (Omie, Bling, Tiny, Granatum, VHSYS, Nibo ou ContaAzul) |
+| CRM (opcional) | Conta em HubSpot, RD Station CRM, PipeRun ou Pipedrive |
 | WhatsApp | Número dedicado para os alertas |
 | Anthropic | API Key (`sk-ant-...`) |
 | Lovable Cloud | Conta gratuita em [lovable.dev](https://lovable.dev) |
@@ -104,9 +106,11 @@ agente-cfo/
 │   ├── granatum/            # Granatum
 │   ├── vhsys/               # VHSYS ERP
 │   ├── nibo/                # Nibo (Premium)
+│   ├── contaazul/           # ContaAzul ERP (OAuth 2.0)
 │   ├── hubspot/             # HubSpot CRM
 │   ├── rd-station/          # RD Station CRM
-│   └── piperun/             # PipeRun CRM
+│   ├── piperun/             # PipeRun CRM
+│   └── pipedrive/           # Pipedrive CRM
 ├── painel/
 │   └── supabase/
 │       ├── migrations/     # Schema do banco (single-tenant)
