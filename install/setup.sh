@@ -223,8 +223,10 @@ ask_choice() {
     export "$var_name"="${_choice:-$default}"
 }
 
-ask_choice "CFO_ERP_NAME" "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo / contaazul" "omie"
-ask_choice "CFO_CRM_NAME" "Quer conectar um CRM?" "hubspot / rd-station / piperun / pipedrive / nenhum" "nenhum"
+ask_choice "CFO_ERP_NAME"       "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo / contaazul" "omie"
+ask_choice "CFO_CRM_NAME"       "Quer conectar um CRM?" "hubspot / rd-station / piperun / pipedrive / nenhum" "nenhum"
+ask_choice "CFO_COBRANCA_NAME"  "Plataforma de cobranca?" "asaas / iugu / nenhum" "nenhum"
+ask_choice "CFO_ECOMMERCE_NAME" "Plataforma de e-commerce?" "mercado-livre / nuvemshop / nenhum" "nenhum"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 4: PANEL_BASE_URL e PANEL_TOKEN
@@ -423,6 +425,8 @@ INGRESS_URL=
 HOOKS_TOKEN=${HOOKS_TOKEN}
 CFO_ERP_NAME=${CFO_ERP_NAME:-omie}
 CFO_CRM_NAME=${CFO_CRM_NAME:-nenhum}
+CFO_COBRANCA_NAME=${CFO_COBRANCA_NAME:-nenhum}
+CFO_ECOMMERCE_NAME=${CFO_ECOMMERCE_NAME:-nenhum}
 OMIE_SKILL_PATH=${HOME}/.openclaw/workspace/skills/omie
 INSTANCE_ID=
 EOF
@@ -700,6 +704,20 @@ if [[ "${CFO_CRM_NAME:-nenhum}" != "nenhum" ]]; then
     _install_skill_from_repo "${CFO_CRM_NAME}"
     CRM_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_CRM_NAME}"
     bash "$CRM_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do CRM falhou — configure manualmente."
+fi
+
+# Instalar skill de cobrança escolhida
+if [[ "${CFO_COBRANCA_NAME:-nenhum}" != "nenhum" ]]; then
+    _install_skill_from_repo "${CFO_COBRANCA_NAME}"
+    COBRANCA_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_COBRANCA_NAME}"
+    bash "$COBRANCA_SKILL_DEST/scripts/connect.sh" || warn "connect.sh de cobranca falhou — configure manualmente."
+fi
+
+# Instalar skill de e-commerce escolhida
+if [[ "${CFO_ECOMMERCE_NAME:-nenhum}" != "nenhum" ]]; then
+    _install_skill_from_repo "${CFO_ECOMMERCE_NAME}"
+    ECOMMERCE_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_ECOMMERCE_NAME}"
+    bash "$ECOMMERCE_SKILL_DEST/scripts/connect.sh" || warn "connect.sh de e-commerce falhou — configure manualmente."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

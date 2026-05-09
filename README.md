@@ -2,7 +2,7 @@
 
 > CFO virtual para PME brasileira — alertas financeiros no WhatsApp, sem planilha, sem dashboard para abrir.
 
-[![10 integrações](https://img.shields.io/badge/integrações-10%20ERPs%2FCRMs-blue)](#integrações-suportadas)
+[![14 integrações](https://img.shields.io/badge/integrações-14%20ERPs%2FCRMs%2FCobrança%2FEcommerce-blue)](#integrações-suportadas)
 [![Template gratuito](https://img.shields.io/badge/template-gratuito-green)](https://lovable.dev/projects/ddcd382f-f68a-478d-a2a5-811a860ba83c)
 
 Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, gerando insights de fluxo de caixa e alertas proativos sem intervenção manual.
@@ -15,7 +15,8 @@ Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, geran
 
 - **07:00** — Resumo matinal: saldo atual, contas a receber hoje, contas a pagar hoje, inadimplência, projeção de caixa 30 dias
 - **18:00** — Fechamento do dia + projeção 7 dias + pipeline CRM (se configurado)
-- **Alertas proativos** automáticos: caixa baixo, inadimplência alta, pipeline em queda, deals parados
+- **Alertas proativos** automáticos: caixa baixo, inadimplência alta, pipeline em queda, deals parados, estoque baixo, queda nas vendas, pedidos não enviados
+- **Cobrança ativa** de clientes inadimplentes via WhatsApp — com confirmação obrigatória do dono
 - **Conversa via WhatsApp** — responde perguntas financeiras em linguagem natural ("qual meu saldo?", "quem vence hoje?")
 - **Painel web** (Lovable Cloud) com histórico de eventos, uso de tokens e push de comandos para a VPS
 
@@ -46,9 +47,16 @@ Conecta o **ERP/CRM** da empresa ao **WhatsApp** do dono via **OpenClaw**, geran
 | CRM | **RD Station CRM** | Token de integração | [`skills/rd-station`](skills/rd-station/SKILL.md) |
 | CRM | **PipeRun** | Token | [`skills/piperun`](skills/piperun/SKILL.md) |
 | CRM | **Pipedrive** | API Token + subdomínio | [`skills/pipedrive`](skills/pipedrive/SKILL.md) |
+| Cobrança | **Asaas** | API Token (header) | [`skills/asaas`](skills/asaas/SKILL.md) |
+| Cobrança | **Iugu** | API Token (Basic Auth) | [`skills/iugu`](skills/iugu/SKILL.md) |
+| E-commerce | **Mercado Livre** | OAuth 2.0 (refresh automático) | [`skills/mercado-livre`](skills/mercado-livre/SKILL.md) |
+| E-commerce | **Nuvemshop** | OAuth 2.0 (token long-lived) | [`skills/nuvemshop`](skills/nuvemshop/SKILL.md) |
 
-Todas as skills ERP expõem a mesma interface (`get_balance`, `list_payables`, `list_receivables`, `list_overdue`, `get_cash_projection`, `company_info`).
-Skills CRM expõem `list_deals`, `pipeline_summary`, `get_pipeline_projection`, `company_info`.
+Interfaces uniformes por categoria:
+- **ERP:** `get_balance`, `list_payables`, `list_receivables`, `list_overdue`, `get_cash_projection`, `company_info`
+- **CRM:** `list_deals`, `pipeline_summary`, `get_pipeline_projection`, `company_info`
+- **Cobrança:** `list_invoices`, `get_invoice`, `get_customer`, `get_overdue_customers`, `send_payment_link`, `create_invoice`, `cancel_invoice`
+- **E-commerce:** `list_orders`, `get_order`, `list_products`, `get_low_stock`, `get_sales_metrics`, `update_stock`, `mark_order_shipped`
 
 O `setup.sh` pergunta qual ERP e CRM usar e configura automaticamente.
 
@@ -61,6 +69,8 @@ O `setup.sh` pergunta qual ERP e CRM usar e configura automaticamente.
 | VPS Linux | Ubuntu 22.04+, mínimo 1 vCPU / 1 GB RAM |
 | ERP | Conta em um dos ERPs suportados (Omie, Bling, Tiny, Granatum, VHSYS, Nibo ou ContaAzul) |
 | CRM (opcional) | Conta em HubSpot, RD Station CRM, PipeRun ou Pipedrive |
+| Cobrança (opcional) | Conta em Asaas ou Iugu |
+| E-commerce (opcional) | Conta no Mercado Livre ou Nuvemshop |
 | WhatsApp | Número dedicado para os alertas |
 | Anthropic | API Key (`sk-ant-...`) |
 | Lovable Cloud | Conta gratuita em [lovable.dev](https://lovable.dev) |
