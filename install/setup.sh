@@ -858,6 +858,9 @@ _add_cron_if_missing "CRON_ID_BUDGET" \
 _add_cron_if_missing "CRON_ID_WA_WATCH" \
     "openclaw cron add --name 'CFO WhatsApp Watch' --cron '*/30 * * * *' --tz 'America/Sao_Paulo' --session isolated --message 'Execute: bash ${SCRIPTS_DIR}/whatsapp-watch.sh' --no-deliver --light-context --json"
 
+_add_cron_if_missing "CRON_ID_MARCOS_INSIGHTS" \
+    "openclaw cron add --name 'CFO Marcos Insights' --cron '*/15 * * * *' --tz 'America/Sao_Paulo' --session isolated --message 'Execute: python3 ${SCRIPTS_DIR}/marcos_insight_generator.py' --no-deliver --light-context --json"
+
 ok "Cron jobs registrados. IDs em: $CRON_IDS_FILE"
 
 # Doctor final
@@ -884,6 +887,7 @@ echo ""
 echo -e "  ${CYAN}Próximos passos:${NC}"
 echo "  • Primeiro alerta chega no WhatsApp às 07:00 de amanhã"
 echo "  • Se WhatsApp desconectar: bash ${SKILL_DEST}/scripts/repare.sh"
+echo "  • Comando Central: KPIs e insights disponíveis via /dashboard-snapshot"
 echo "  • Diagnóstico: bash ${SKILL_DEST}/scripts/doctor.sh"
 echo "  • Logs inbound:   ${LOG_DIR}/wacli-inbound.log"
 echo "  • Logs proativo:  ${LOG_DIR}/proactive.log"
