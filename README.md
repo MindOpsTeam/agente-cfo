@@ -177,6 +177,39 @@ Geradas em `~/.agente-cfo/.env` pelo `setup.sh`. Veja [`install/env.example`](in
 
 ---
 
+## Comando Central
+
+Painel de estado da arte com KPIs unificados, projeções e insights IA.
+
+### Como funciona
+
+1. **dashboard-snapshot** — agrega métricas de todas as integrações ativas em paralelo, com cache de 5 min
+2. **marcos_insight_generator** — roda a cada 15 min, analisa os números e gera até 8 insights via Marcos
+3. **simulate-scenario** — simulação what-if: e se eu cobrar X% do inadimplente? e se fechar esses deals?
+
+### Edge functions
+
+| Função | Auth | Descrição |
+|--------|------|-----------|
+| `dashboard-snapshot` | JWT dono | Coleta e agrega KPIs de todas as skills ativas |
+| `dashboard-publish-insights` | X-Panel-Token | Persiste insights gerados por Marcos |
+| `simulate-scenario` | JWT dono | Simula cenários financeiros (read-only) |
+
+### Configuração
+
+No arquivo `~/.openclaw/secrets/agente-cfo.env`:
+```
+ACTIVE_SKILLS=omie,pipedrive
+PANEL_BASE_URL=https://xxxxx.supabase.co
+PANEL_TOKEN=seu_panel_token
+HOOKS_URL=https://sua-instancia.example.com
+HOOKS_TOKEN=seu_hooks_token
+```
+
+O cron `marcos_insight_generator` roda automaticamente a cada 15 minutos após o setup.
+
+---
+
 ## Licença
 
 MIT — faça o que quiser, sem garantias.
