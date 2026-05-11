@@ -53,6 +53,64 @@ def log(msg: str):
         pass
 
 
+def extract_confirm_token(text: str) -> str | None:
+    """Extrai UUID do formato [confirm:UUID] de mensagens do bot."""
+    import re
+    m = re.search(r'\[confirm:([a-f0-9\-]{36})\]', text or "")
+    return m.group(1) if m else None
+
+
+def is_positive_reply(text: str) -> bool:
+    t = text.lower().strip()
+    return any(w in t for w in ["sim", "yes", "confirmo", "ok", "pode", "manda", "vai"])
+
+
+def is_negative_reply(text: str) -> bool:
+    t = text.lower().strip()
+    return any(w in t for w in ["não", "nao", "no", "cancela", "cancelo", "para"])
+
+
+def handle_automation_confirm(text: str, pending_token: str) -> bool:
+    """
+    Se text é SIM/NÃO e há pending_token, chama edge automation-confirm.
+    Retorna True se confirmação foi processada.
+    """
+    if not pending_token:
+        return False
+
+    decision = None
+    if is_positive_reply(text):
+        decision = "confirm"
+    elif is_negative_reply(text):
+        decision = "cancel"
+
+    if not decision:
+        return False
+
+    panel_base = os.environ.get("PANEL_BASE_URL", "")
+    panel_token = os.environ.get("PANEL_TOKEN", "")
+    if not panel_base or not panel_token:
+        return False
+
+    try:
+        body = json.dumps({"token": pending_token, "decision": decision}).encode()
+        req = urllib.request.Request(
+            f"{panel_base}/functions/v1/automation-confirm",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Panel-Token": panel_token,
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            log(f"automation-confirm: {decision} → {resp.status}")
+        return True
+    except Exception as e:
+        log(f"Erro chamando automation-confirm: {e}")
+        return False
+
+
 def load_state() -> dict:
     """Carrega estado do cursor. Na primeira execução (ou last_ts nulo) seta
     last_ts=now para ignorar histórico anterior ao primeiro start (bug 5).
@@ -287,6 +345,24 @@ def run():
                     continue
 
                 log(f"Nova mensagem do dono: {text[:80]}")
+
+                # Detecta reply de confirmação de automação
+                confirm_state_file = Path.home() / ".agente-cfo" / "state" / "pending_confirm_token.txt"
+                pending_token = ""
+                try:
+                    if confirm_state_file.exists():
+                        pending_token = confirm_state_file.read_text().strip()
+                except Exception:
+                    pass
+
+                if pending_token and handle_automation_confirm(text, pending_token):
+                    try:
+                        confirm_state_file.write_text("")
+                    except Exception:
+                        pass
+                    seen_ids.add(mid)
+                    log(f"Confirmação de automação processada: {text[:40]}")
+                    continue
 
                 append_thread(own_jid, "user", text)
                 dispatch_to_agent(text, own_jid, mid)
