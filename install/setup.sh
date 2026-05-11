@@ -565,8 +565,29 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 
+# Unit cfo-automation-engine — Automation Engine (Sprint 17)
+_AUTOMATION_ENGINE_SCRIPT="${SKILL_DEST}/scripts/cfo_automation_engine.py"
+cat > /etc/systemd/system/cfo-automation-engine.service << EOF
+[Unit]
+Description=Marcos Automation Engine (Agente CFO)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_AUTOMATION_ENGINE_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive."
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -737,6 +758,11 @@ ok "wacli-inbound.service iniciado."
 systemctl enable --now cfo-proactive 2>/dev/null || warn "cfo-proactive enable falhou."
 ok "cfo-proactive.service iniciado (detecção de anomalias a cada ${CFO_PROACTIVE_INTERVAL_MINUTES:-30} min)."
 
+# Iniciar automation engine (Sprint 17)
+systemctl enable --now cfo-automation-engine 2>/dev/null || warn "systemctl enable cfo-automation-engine falhou."
+# NÃO desativa cfo-proactive aqui — mantém para rollback
+info "cfo-automation-engine ativado. cfo-proactive mantido (rollback disponível)."
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
 # ─────────────────────────────────────────────────────────────────────────────
@@ -888,6 +914,8 @@ echo -e "  ${CYAN}Próximos passos:${NC}"
 echo "  • Primeiro alerta chega no WhatsApp às 07:00 de amanhã"
 echo "  • Se WhatsApp desconectar: bash ${SKILL_DEST}/scripts/repare.sh"
 echo "  • Comando Central: KPIs e insights disponíveis via /dashboard-snapshot"
+echo "  • Automações: configure em ${PANEL_BASE_URL}/automations ou via chat com Marcos"
+echo "  • Para rollback: systemctl stop cfo-automation-engine && systemctl start cfo-proactive"
 echo "  • Diagnóstico: bash ${SKILL_DEST}/scripts/doctor.sh"
 echo "  • Logs inbound:   ${LOG_DIR}/wacli-inbound.log"
 echo "  • Logs proativo:  ${LOG_DIR}/proactive.log"
