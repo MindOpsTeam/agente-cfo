@@ -319,6 +319,58 @@ class BaseERPClient(ABC):
             "as_of": now_iso(),
         }
 
+    def get_dashboard_metrics(self, days_in: int = 30, days_out: int = 30) -> dict:
+        """Agrega KPIs financeiros para o painel Comando Central."""
+        health_status = "ok"
+        balance_brl = 0.0
+        receivables_brl = 0.0
+        payables_brl = 0.0
+        overdue_total_brl = 0.0
+        top_debtors: list[dict] = []
+        cash_projection_90d: list[dict] = []
+
+        try:
+            resp = self.get_balance()
+            balance_brl = float(resp.get("balance_brl", 0.0))
+        except Exception:
+            health_status = "degraded"
+
+        try:
+            resp = self.list_receivables(limit=200)
+            receivables_brl = sum(float(i.get("amount_brl", 0.0)) for i in resp.get("items", []))
+        except Exception:
+            health_status = "degraded"
+
+        try:
+            resp = self.list_payables(limit=200)
+            payables_brl = sum(float(i.get("amount_brl", 0.0)) for i in resp.get("items", []))
+        except Exception:
+            health_status = "degraded"
+
+        try:
+            resp = self.list_overdue()
+            items = resp.get("items", [])
+            overdue_total_brl = sum(float(i.get("amount_brl", 0.0)) for i in items)
+            top_debtors = sorted(items, key=lambda x: -float(x.get("amount_brl", 0.0)))[:10]
+        except Exception:
+            health_status = "degraded"
+
+        try:
+            resp = self.get_cash_projection(days=90)
+            cash_projection_90d = resp.get("by_week", [])
+        except Exception:
+            health_status = "degraded"
+
+        return {
+            "balance_brl": round(balance_brl, 2),
+            "receivables_brl": round(receivables_brl, 2),
+            "payables_brl": round(payables_brl, 2),
+            "overdue_total_brl": round(overdue_total_brl, 2),
+            "top_debtors": top_debtors,
+            "cash_projection_90d": cash_projection_90d,
+            "health": {"status": health_status, "last_sync": now_iso()},
+        }
+
     def company_info(self) -> dict:
         return {"name": "N/A", "cnpj": None, "segment": None}
 
@@ -548,6 +600,36 @@ class BaseCRMClient(ABC):
             "no_close_date_count": len(no_date_deals),
             "by_week": weeks,
             "as_of": now_iso(),
+        }
+
+    def get_dashboard_metrics(self, days: int = 30) -> dict:
+        """Agrega KPIs de pipeline para o painel Comando Central."""
+        health_status = "ok"
+        pipeline_weighted_brl = 0.0
+        pipeline_by_stage: list[dict] = []
+
+        try:
+            resp = self.get_pipeline_projection(horizon_days=days)
+            # Agrupa por stage a partir dos deals semanais
+            stage_map: dict[str, dict] = {}
+            for week in resp.get("by_week", []):
+                for deal in week.get("deals", []):
+                    stage = deal.get("stage", "unknown")
+                    amt = float(deal.get("amount_brl") or 0.0)
+                    if stage not in stage_map:
+                        stage_map[stage] = {"stage_name": stage, "amount_brl": 0.0, "weighted_amount_brl": 0.0}
+                    stage_map[stage]["amount_brl"] += amt
+                    stage_map[stage]["weighted_amount_brl"] += amt
+
+            pipeline_by_stage = list(stage_map.values())
+            pipeline_weighted_brl = float(resp.get("expected_close_brl", 0.0))
+        except Exception:
+            health_status = "degraded"
+
+        return {
+            "pipeline_weighted_brl": round(pipeline_weighted_brl, 2),
+            "pipeline_by_stage": pipeline_by_stage,
+            "health": {"status": health_status, "last_sync": now_iso()},
         }
 
     def company_info(self) -> dict:
@@ -908,6 +990,22 @@ class BaseEcommerceClient(ABC):
             "avg_ticket_brl": round(avg_ticket, 2),
             "cancelled_orders": len(cancelled),
             "as_of": now_iso(),
+        }
+
+    def get_dashboard_metrics(self, days: int = 30) -> dict:
+        """Agrega KPIs de e-commerce para o painel Comando Central."""
+        health_status = "ok"
+        ecommerce_revenue_month_brl = 0.0
+
+        try:
+            resp = self.get_sales_metrics(days=days)
+            ecommerce_revenue_month_brl = float(resp.get("total_revenue_brl", 0.0))
+        except Exception:
+            health_status = "degraded"
+
+        return {
+            "ecommerce_revenue_month_brl": round(ecommerce_revenue_month_brl, 2),
+            "health": {"status": health_status, "last_sync": now_iso()},
         }
 
     def company_info(self) -> dict:
