@@ -210,6 +210,96 @@ O cron `marcos_insight_generator` roda automaticamente a cada 15 minutos após o
 
 ---
 
+## Automações
+
+O **Automation Engine** substitui as regras proativas hardcoded por automações configuráveis via painel ou chat.
+
+### Daemon
+
+- Path: `skills/agente-cfo/scripts/cfo_automation_engine.py`
+- Intervalo: `AUTOMATION_ENGINE_INTERVAL_MIN` (default 5 min)
+- Logs: `~/.agente-cfo/logs/automation-engine.log`
+- State: `~/.agente-cfo/state/automation_engine.json`
+- Systemd: `cfo-automation-engine.service`
+
+### Tipos de trigger
+
+| Tipo | Descrição | Exemplo |
+|------|-----------|---------|
+| `cron` | Expressão cron (5 campos) | `0 9 * * 1` (segunda 9h) |
+| `metric` | Dispara quando KPI ultrapassa threshold | `balance_brl < 50000` |
+| `manual` | Só via botão "Run Now" no painel | — |
+
+### Actions disponíveis
+
+| Action | Confirmação | Descrição |
+|--------|-------------|-----------|
+| `send_report` | Não | Gera relatório (cash/pipeline/cobranca/dashboard) e envia via WhatsApp |
+| `send_whatsapp` | Sim* | Envia mensagem WhatsApp (*não se `to=owner`) |
+| `crm_update_deal` | Sim | Atualiza campos de um deal no CRM |
+| `crm_create_task` | Não | Cria tarefa no CRM |
+| `erp_create_invoice` | Sim | Cria conta a receber no ERP |
+| `cobranca_send` | Sim | Envia cobrança (payment link ou reminder) |
+| `ai_decide` | Sim | Delega decisão para Marcos via IA |
+
+### Flow de confirmação WhatsApp
+
+1. Engine detecta que a automação precisa de confirmação
+2. Cria `automation_run` com status `pending_confirm` + `confirmation_token`
+3. Envia WhatsApp: "Vou executar X. Confirma? SIM ou NÃO. [confirm:UUID]"
+4. Salva token em `~/.agente-cfo/state/pending_confirm_token.txt`
+5. `wacli_inbound.py` detecta resposta SIM/NÃO do dono
+6. Chama edge function `automation-confirm` com token + decisão
+7. Edge function atualiza status para `running` (confirma) ou `cancelled`
+8. Engine detecta run com `status=running` e executa as ações
+9. Runs `pending_confirm` > 24h são expirados automaticamente
+
+### Templates disponíveis
+
+| Template Key | Nome | Trigger |
+|-------------|------|---------|
+| `weekly_cash_report` | Relatório semanal de caixa | Cron: seg 9h |
+| `auto_collect_overdue` | Cobrança automática inadimplentes 15d+ | Cron: diário 10h |
+| `crm_update_won_deals` | Atualiza CRM quando fatura paga | Cron: */30 min |
+| `stale_deals_reminder` | Lembrete deals parados +7 dias | Cron: ter 9h |
+| `cash_flow_alert` | Alerta de caixa baixo | Metric: balance_brl < 50k |
+| `weekly_overdue_report` | Top devedores semanal | Cron: sex 9h |
+
+### Edge functions
+
+| Função | Auth | Descrição |
+|--------|------|-----------|
+| `automations-list` | JWT dono | Lista automações + último run |
+| `automations-save` | JWT dono | Cria/atualiza automação |
+| `automations-delete` | JWT dono | Deleta automação e runs |
+| `automations-run-now` | JWT dono | Execução manual imediata |
+| `automation-confirm` | X-Panel-Token | Callback de confirmação WhatsApp |
+| `automations-test` | JWT dono | Teste de automação via push-command |
+| `automations-templates-list` | JWT dono | Lista templates disponíveis |
+
+### Migração das regras antigas
+
+O script `migrate_rules_to_automations.py` converte as 12 regras proativas em automações equivalentes:
+
+```bash
+python3 ~/.openclaw/workspace/skills/agente-cfo/scripts/migrate_rules_to_automations.py
+```
+
+Idempotente: só roda uma vez (flag `proactive_rules_migrated` no state).
+
+Para rollback: `systemctl stop cfo-automation-engine && systemctl start cfo-proactive`
+
+### Schema Supabase
+
+```sql
+automations(id, user_id, name, description, trigger, conditions, actions, active, require_confirmation, template_key, last_run_at, next_run_at, created_at, updated_at)
+automation_runs(id, automation_id, user_id, status, trigger_payload, steps, result, error, confirmation_token, confirmation_message_id, started_at, finished_at)
+```
+
+Status de runs: `pending_confirm` | `running` | `succeeded` | `failed` | `cancelled` | `expired`
+
+---
+
 ## Licença
 
 MIT — faça o que quiser, sem garantias.
