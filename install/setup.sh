@@ -777,9 +777,19 @@ fi
 AGENTE_CFO_VER=$(git -C "$SKILL_DEST" describe --tags --always 2>/dev/null || echo "1.0.0")
 OPENCLAW_VER=$(openclaw --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "unknown")
 
+# Token do dashboard do OpenClaw (lido do openclaw.json — usado pra autenticar UI)
+OPENCLAW_DASHBOARD_TOKEN=$(python3 -c "
+import json, os
+try:
+    with open(os.path.expanduser('~/.openclaw/openclaw.json')) as f:
+        print(json.load(f).get('gateway', {}).get('token', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+
 REGISTER_BODY=$(printf \
-    '{"hostname":"%s","openclaw_version":"%s","agente_cfo_version":"%s","ingress_url":"%s","hooks_token":"%s"}' \
-    "$(hostname)" "$OPENCLAW_VER" "$AGENTE_CFO_VER" "${INGRESS_URL:-}" "$HOOKS_TOKEN")
+    '{"hostname":"%s","openclaw_version":"%s","agente_cfo_version":"%s","ingress_url":"%s","hooks_token":"%s","openclaw_dashboard_token":"%s"}' \
+    "$(hostname)" "$OPENCLAW_VER" "$AGENTE_CFO_VER" "${INGRESS_URL:-}" "$HOOKS_TOKEN" "$OPENCLAW_DASHBOARD_TOKEN")
 
 REGISTER_RESP=$(curl -s --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
     -H "Content-Type: application/json" \
