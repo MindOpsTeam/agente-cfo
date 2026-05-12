@@ -222,6 +222,19 @@ O **Automation Engine** substitui as regras proativas hardcoded por automações
 - State: `~/.agente-cfo/state/automation_engine.json`
 - Systemd: `cfo-automation-engine.service`
 
+> **Sprint 19 — Sem `SUPABASE_SERVICE_ROLE_KEY` na VPS.**
+> O daemon nunca acessa o Supabase diretamente. Toda leitura/escrita passa por
+> edge functions autenticadas via `X-Panel-Token` + `X-Hooks-Token`. O `service_role`
+> fica exclusivamente no Supabase Edge Runtime, nunca exposto na VPS do cliente.
+
+**Envs obrigatórias (Sprint 19):**
+```
+PANEL_BASE_URL=https://<project>.supabase.co/functions/v1
+PANEL_TOKEN=<token>
+HOOKS_TOKEN=<token>
+```
+`SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` **não são mais necessários** no daemon.
+
 ### Tipos de trigger
 
 | Tipo | Descrição | Exemplo |
@@ -276,6 +289,8 @@ O **Automation Engine** substitui as regras proativas hardcoded por automações
 | `automation-confirm` | X-Panel-Token | Callback de confirmação WhatsApp |
 | `automations-test` | JWT dono | Teste de automação via push-command |
 | `automations-templates-list` | JWT dono | Lista templates disponíveis |
+| `automations-engine-poll` | X-Panel-Token + X-Hooks-Token | Retorna o que precisa executar agora (daemon → painel) |
+| `automations-engine-record-run` | X-Panel-Token + X-Hooks-Token | Cria/atualiza automation_run (daemon → painel) |
 
 ### Migração das regras antigas
 
