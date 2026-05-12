@@ -45,7 +45,14 @@ ask() {
     [[ -n "$default_val" ]] && prompt_str="$description [${default_val}]"
     local value=""
     while [[ -z "$value" ]]; do
-        read -rp "$(echo -e "${CYAN}?${NC} ${prompt_str}: ")" value
+        # Lê de /dev/tty pra funcionar mesmo via `curl | bash` (stdin é o script)
+        if [[ -r /dev/tty ]]; then
+            read -rp "$(echo -e "${CYAN}?${NC} ${prompt_str}: ")" value </dev/tty
+        else
+            fail "Setup precisa rodar interativamente. Baixe o script primeiro:
+  curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/setup.sh -o /tmp/cfo-setup.sh
+  bash /tmp/cfo-setup.sh"
+        fi
         value="${value:-$default_val}"
         [[ -z "$value" ]] && echo "  ⚠️  Valor obrigatório."
     done
@@ -72,6 +79,17 @@ info "Iniciando instalação em: $(hostname) — $(date '+%Y-%m-%d %H:%M:%S')"
 mkdir -p "$LOG_DIR" "$STATE_DIR"
 mkdir -p "${STATE_DIR}/memory"
 chmod 700 "${STATE_DIR}/memory"
+
+# Reutiliza config existente em re-execução (não regera tokens)
+if [[ -f "$ENV_FILE" ]]; then
+    info "Detectado $ENV_FILE — reutilizando config existente (re-execução)."
+    # shellcheck source=/dev/null
+    set -a; source "$ENV_FILE"; set +a
+fi
+if [[ -f "$INSTANCE_ENV" ]]; then
+    # shellcheck source=/dev/null
+    set -a; source "$INSTANCE_ENV"; set +a
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 1: Pre-flight
