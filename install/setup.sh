@@ -297,7 +297,14 @@ fi
 step "5b/13 — Configurando OpenClaw"
 
 openclaw config set gateway.mode local 2>&1 | grep -v "^Config overwrite" || true
-ok "gateway.mode=local configurado."
+openclaw config set gateway.auth.mode token 2>&1 | grep -v "^Config overwrite" || true
+# Gera token de gateway se ainda não existe (usado pro dashboard via painel)
+if ! python3 -c "import json,os,sys; t=json.load(open(os.path.expanduser('~/.openclaw/openclaw.json'))).get('gateway',{}).get('auth',{}).get('token'); sys.exit(0 if t else 1)" 2>/dev/null; then
+    _GW_TOKEN=$(openssl rand -hex 24)
+    openclaw config set gateway.auth.token "$_GW_TOKEN" 2>&1 | grep -v "^Config overwrite" || true
+    ok "gateway.auth.token gerado."
+fi
+ok "gateway.mode=local + auth.mode=token configurado."
 
 info "Configurando provider Anthropic no OpenClaw..."
 _ANTHROPIC_PATCH=$(mktemp /tmp/anthropic-cfg-XXXXXX.json5)
