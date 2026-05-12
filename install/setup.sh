@@ -307,7 +307,9 @@ fi
 # Permite UI ser aberta de qualquer origin (proteção real é auth.token no fragment)
 # Necessário porque Cloudflare quick tunnels mudam a URL a cada reinício
 openclaw config set 'gateway.controlUi.allowedOrigins' '["*"]' 2>&1 | grep -v "^Config overwrite" || true
-ok "gateway.mode=local + auth.mode=token + controlUi.allowedOrigins=* configurado."
+# Desabilita device pairing — acesso é via token único no fragment URL
+openclaw config set 'gateway.controlUi.dangerouslyDisableDeviceAuth' true 2>&1 | grep -v "^Config overwrite" || true
+ok "gateway.mode=local + auth.mode=token + controlUi (allowedOrigins=* + dangerouslyDisableDeviceAuth) configurado."
 
 info "Configurando provider Anthropic no OpenClaw..."
 _ANTHROPIC_PATCH=$(mktemp /tmp/anthropic-cfg-XXXXXX.json5)
