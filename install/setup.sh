@@ -304,7 +304,10 @@ if ! python3 -c "import json,os,sys; t=json.load(open(os.path.expanduser('~/.ope
     openclaw config set gateway.auth.token "$_GW_TOKEN" 2>&1 | grep -v "^Config overwrite" || true
     ok "gateway.auth.token gerado."
 fi
-ok "gateway.mode=local + auth.mode=token configurado."
+# Permite UI ser aberta de qualquer origin (proteção real é auth.token no fragment)
+# Necessário porque Cloudflare quick tunnels mudam a URL a cada reinício
+openclaw config set 'gateway.controlUi.allowedOrigins' '["*"]' 2>&1 | grep -v "^Config overwrite" || true
+ok "gateway.mode=local + auth.mode=token + controlUi.allowedOrigins=* configurado."
 
 info "Configurando provider Anthropic no OpenClaw..."
 _ANTHROPIC_PATCH=$(mktemp /tmp/anthropic-cfg-XXXXXX.json5)
