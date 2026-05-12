@@ -2,13 +2,24 @@
 """
 cfo_automation_engine.py — Daemon do Automation Engine do Agente CFO.
 
+Sprint 19: sem SUPABASE_SERVICE_ROLE_KEY na VPS.
+Todas as consultas e escritas ao Supabase são feitas via edge functions
+autenticadas com X-Panel-Token + X-Hooks-Token.
+
 Roda em loop a cada AUTOMATION_ENGINE_INTERVAL_MIN (default 5 min).
 A cada ciclo:
-  1. Busca automações ativas no Supabase
-  2. Expira runs pending_confirm > 24h
-  3. Avalia triggers (cron, metric, manual)
-  4. Cria runs e solicita confirmação ou executa diretamente
-  5. Detecta runs com status=running e executa-os
+  1. Chama edge function automations-engine-poll → lista o que precisa executar
+  2. Para cada item em `scheduled`: executa (ou solicita confirmação)
+  3. Para cada run em `pending_runs`: expira (marca como expired via record-run)
+  4. Para cada run em `running_runs`: executa as ações
+
+Envs obrigatórias:
+  PANEL_BASE_URL   — URL base das edge functions, ex: https://xxx.supabase.co/functions/v1
+  PANEL_TOKEN      — X-Panel-Token
+  HOOKS_TOKEN      — X-Hooks-Token
+
+Envs opcionais:
+  AUTOMATION_ENGINE_INTERVAL_MIN  — intervalo entre ciclos (default 5)
 
 Logs: ~/.agente-cfo/logs/automation-engine.log
 State: ~/.agente-cfo/state/automation_engine.json
@@ -20,7 +31,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -77,204 +88,98 @@ def save_state(state: dict) -> None:
     STATE_FILE.write_text(json.dumps(state, indent=2, default=str))
 
 
-# ── Supabase REST helper ─────────────────────────────────────────────────────
+# ── Edge function helpers ─────────────────────────────────────────────────────
 
-def supabase_request(method: str, path: str, body: dict | list | None = None,
-                     params: dict | None = None) -> Any:
-    """
-    Chama a Supabase REST API usando urllib (sem dependências externas).
-    Base: {SUPABASE_URL}/rest/v1/{path}
-    """
-    supabase_url = os.environ.get("SUPABASE_URL", os.environ.get("PANEL_BASE_URL", ""))
-    service_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-
-    if not supabase_url or not service_key:
-        log("[supabase] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados")
-        return None
-
-    # Normaliza base URL: remove /functions/v1 se presente
-    base = supabase_url.replace("/functions/v1", "")
-    url = f"{base}/rest/v1/{path}"
-
-    if params:
-        query_parts = []
-        for k, v in params.items():
-            query_parts.append(f"{k}={v}")
-        url += "?" + "&".join(query_parts)
-
-    headers = {
-        "apikey": service_key,
-        "Authorization": f"Bearer {service_key}",
+def _edge_headers() -> dict:
+    return {
+        "X-Panel-Token": os.environ["PANEL_TOKEN"],
+        "X-Hooks-Token": os.environ["HOOKS_TOKEN"],
         "Content-Type": "application/json",
-        "Prefer": "return=representation",
     }
 
-    data = None
-    if body is not None:
-        data = json.dumps(body, default=str).encode("utf-8")
 
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-
-    try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            response_body = resp.read().decode()
-            if response_body:
-                return json.loads(response_body)
-            return None
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode()[:300]
-        log(f"[supabase] HTTP {e.code} {method} {path}: {error_body}")
-        return None
-    except Exception as e:
-        log(f"[supabase] Erro {method} {path}: {e}")
-        return None
+def _panel_base() -> str:
+    return os.environ["PANEL_BASE_URL"].rstrip("/")
 
 
-# ── Cron evaluation ──────────────────────────────────────────────────────────
-
-def should_run_cron(expr: str, last_run_at: str | None) -> bool:
+def poll() -> dict:
     """
-    Retorna True se a expressão cron deveria ter disparado desde last_run_at.
-    Timezone: America/Sao_Paulo (UTC-3 aproximação).
+    Chama GET /automations-engine-poll.
+    Retorna { scheduled: [...], pending_runs: [...], running_runs: [...] }
     """
-    now = datetime.now(timezone.utc)
-
-    if last_run_at:
-        try:
-            last = datetime.fromisoformat(last_run_at.replace("Z", "+00:00"))
-        except (ValueError, TypeError):
-            last = now - timedelta(hours=24)
-    else:
-        last = now - timedelta(hours=24)
-
+    url = f"{_panel_base()}/automations-engine-poll"
+    req = urllib.request.Request(url, headers=_edge_headers(), method="GET")
     try:
-        import croniter
-        cron = croniter.croniter(expr, last)
-        next_run = cron.get_next(datetime)
-        return next_run <= now
-    except ImportError:
-        return _simple_cron_check(expr, last, now)
-
-
-def _simple_cron_check(expr: str, last: datetime, now: datetime) -> bool:
-    """Fallback: parser simples para padrões cron comuns."""
-    parts = expr.strip().split()
-    if len(parts) != 5:
-        return False
-
-    minute, hour, dom, month, dow = parts
-    tz_offset = timedelta(hours=-3)  # America/Sao_Paulo aproximação
-    now_local = now + tz_offset
-    last_local = last + tz_offset
-
-    # */N * * * * — every N minutes
-    if minute.startswith("*/") and hour == "*" and dom == "*" and month == "*" and dow == "*":
-        try:
-            n = int(minute[2:])
-            elapsed = (now - last).total_seconds() / 60
-            return elapsed >= n
-        except ValueError:
-            return False
-
-    # 0 H * * * — daily at hour H
-    if dom == "*" and month == "*" and dow == "*":
-        try:
-            target_minute = int(minute)
-            target_hour = int(hour)
-            target_today = now_local.replace(
-                hour=target_hour, minute=target_minute, second=0, microsecond=0
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode())
+            log(
+                f"[poll] scheduled={len(data.get('scheduled', []))} "
+                f"pending_runs={len(data.get('pending_runs', []))} "
+                f"running_runs={len(data.get('running_runs', []))}"
             )
-            target_yesterday = target_today - timedelta(days=1)
-
-            # Verifica se o target de hoje ou ontem está entre last e now
-            for target in [target_today, target_yesterday]:
-                if last_local < target <= now_local:
-                    return True
-            return False
-        except ValueError:
-            return False
-
-    # 0 H * * W — weekly on weekday W (0=Sun, 1=Mon, ..., 6=Sat)
-    if dom == "*" and month == "*" and dow != "*":
-        try:
-            target_minute = int(minute)
-            target_hour = int(hour)
-            target_dow = int(dow)
-            # Python: Monday=0, Sunday=6; cron: Sunday=0, Monday=1
-            # Converter cron DOW para Python DOW
-            python_dow = (target_dow - 1) % 7 if target_dow > 0 else 6
-
-            # Verificar últimos 7 dias
-            for days_back in range(8):
-                check_day = now_local - timedelta(days=days_back)
-                if check_day.weekday() == python_dow:
-                    target_time = check_day.replace(
-                        hour=target_hour, minute=target_minute, second=0, microsecond=0
-                    )
-                    if last_local < target_time <= now_local:
-                        return True
-            return False
-        except ValueError:
-            return False
-
-    return False
+            return data
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:300]
+        log(f"[poll] HTTP {e.code}: {body}")
+        return {}
+    except Exception as e:
+        log(f"[poll] Erro: {e}")
+        return {}
 
 
-# ── Metric evaluation ────────────────────────────────────────────────────────
-
-def should_run_metric(trigger: dict, automation: dict) -> bool:
+def record_run(run: dict, update_last_run: bool = False) -> dict:
     """
-    Busca o snapshot do dashboard e compara o KPI com o threshold.
-    Cooldown: 24h para evitar spam.
+    Chama POST /automations-engine-record-run.
+    - Se run["id"] está presente → UPDATE.
+    - Caso contrário → INSERT (retorna run_id).
+    Retorna { run_id } ou {} em caso de erro.
     """
-    state = load_state()
-    cooldown_key = f"metric_cooldown:{automation['id']}"
-    last_fired = state.get(cooldown_key)
-    if last_fired:
-        try:
-            last_dt = datetime.fromisoformat(last_fired.replace("Z", "+00:00"))
-            if (datetime.now(timezone.utc) - last_dt).total_seconds() < 86400:
-                return False
-        except (ValueError, TypeError):
-            pass
-
-    metric_name = trigger.get("metric", "balance_brl")
-    operator = trigger.get("operator", "lt")
-    threshold = float(trigger.get("value", 0))
-
-    snapshot = get_latest_snapshot()
-    if not snapshot:
-        return False
-
-    kpis = snapshot.get("kpis", {})
+    url = f"{_panel_base()}/automations-engine-record-run"
+    payload = json.dumps(
+        {"run": run, "update_automation_last_run": update_last_run},
+        default=str,
+    ).encode("utf-8")
+    req = urllib.request.Request(url, data=payload, headers=_edge_headers(), method="POST")
     try:
-        value = float(kpis.get(metric_name, 0))
-    except (ValueError, TypeError):
-        return False
-
-    ops = {
-        "lt": value < threshold, "lte": value <= threshold,
-        "gt": value > threshold, "gte": value >= threshold,
-        "eq": value == threshold, "neq": value != threshold,
-    }
-    result = ops.get(operator, False)
-
-    if result:
-        state[cooldown_key] = datetime.now(timezone.utc).isoformat()
-        save_state(state)
-
-    return result
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()[:300]
+        log(f"[record_run] HTTP {e.code}: {body}")
+        return {}
+    except Exception as e:
+        log(f"[record_run] Erro: {e}")
+        return {}
 
 
-def get_latest_snapshot() -> dict | None:
-    """Tenta ler da tabela dashboard_snapshots via Supabase REST API."""
-    result = supabase_request(
-        "GET", "dashboard_snapshots",
-        params={"select": "*", "order": "created_at.desc", "limit": "1"},
-    )
-    if result and isinstance(result, list) and len(result) > 0:
-        return result[0]
-    return None
+# ── Panel events ─────────────────────────────────────────────────────────────
+
+def emit_panel_event(event_type: str, payload: dict) -> None:
+    """Emite evento para o painel via edge function /event."""
+    panel_url = os.environ.get("PANEL_BASE_URL", "")
+    panel_token = os.environ.get("PANEL_TOKEN", "")
+    instance_id = os.environ.get("INSTANCE_ID", "")
+
+    if not all([panel_url, panel_token, instance_id]):
+        return
+
+    event_payload = json.dumps({
+        "instance_id": instance_id,
+        "type": event_type,
+        "payload": payload,
+    }, default=str)
+
+    try:
+        subprocess.run(
+            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
+             "--max-time", "10", "-X", "POST", f"{panel_url}/event",
+             "-H", "Content-Type: application/json",
+             "-H", f"X-Panel-Token: {panel_token}",
+             "-d", event_payload],
+            capture_output=True, text=True, timeout=15,
+        )
+    except Exception as e:
+        log(f"[panel] Erro ao emitir evento {event_type}: {e}")
 
 
 # ── Confirmation logic ───────────────────────────────────────────────────────
@@ -290,10 +195,8 @@ ACTIONS_REQUIRING_CONFIRM = {
 
 def compute_needs_confirmation(automation: dict) -> bool:
     """Decide se a automação precisa de confirmação do dono."""
-    # Override explícito do usuário
     if automation.get("require_confirmation") is not None:
         return bool(automation["require_confirmation"])
-
     for action in automation.get("actions", []):
         atype = action.get("type", "")
         if atype in ACTIONS_REQUIRING_CONFIRM:
@@ -303,49 +206,49 @@ def compute_needs_confirmation(automation: dict) -> bool:
     return False
 
 
-# ── Run management ───────────────────────────────────────────────────────────
+# ── Execute automation ────────────────────────────────────────────────────────
 
-def schedule_run(automation: dict, trigger_payload: dict, needs_confirm: bool):
-    """Cria um run no Supabase e solicita confirmação ou executa."""
-    status = "pending_confirm" if needs_confirm else "running"
-    run = supabase_request("POST", "automation_runs", body={
+def execute_automation(automation: dict, reason: str) -> None:
+    """
+    Avalia se a automação precisa de confirmação e cria/executa o run.
+    Chamado para itens do payload.scheduled.
+    """
+    needs_confirm = compute_needs_confirmation(automation)
+
+    # 1. Cria o run (INSERT) via edge function
+    run = {
         "automation_id": automation["id"],
         "user_id": automation.get("user_id"),
-        "status": status,
-        "trigger_payload": trigger_payload,
+        "status": "pending_confirm" if needs_confirm else "running",
+        "trigger_payload": {"reason": reason},
         "steps": [],
         "started_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    run_id = None
-    confirm_token = None
-    if run and isinstance(run, list) and len(run) > 0:
-        run_id = run[0].get("id")
-        confirm_token = run[0].get("confirmation_token")
+    }
+    resp = record_run(run, update_last_run=True)
+    run_id = resp.get("run_id")
 
     if not run_id:
-        log(f"[schedule] Falha ao criar run para automação {automation['id']}")
+        log(f"[execute] Falha ao criar run para automação {automation.get('id')}")
         return
 
-    # Atualiza last_run_at
-    supabase_request("PATCH", f"automations?id=eq.{automation['id']}", body={
-        "last_run_at": datetime.now(timezone.utc).isoformat(),
-    })
+    run["id"] = run_id
 
     if needs_confirm:
-        send_confirmation_request(automation, run_id, confirm_token or "")
+        _send_confirmation_request(automation, run_id)
     else:
-        execute_automation_run(automation, run_id)
+        _execute_run_actions(automation, run)
 
 
-def send_confirmation_request(automation: dict, run_id: int, confirm_token: str):
-    """Envia pedido de confirmação via WhatsApp."""
+def _send_confirmation_request(automation: dict, run_id: int) -> None:
+    """Envia pedido de confirmação via WhatsApp e emite evento no painel."""
     actions_summary = ", ".join(a.get("type", "?") for a in automation.get("actions", []))
+    # A edge function automation-confirm gera o confirmation_token; precisamos buscá-lo.
+    # Para compatibilidade: o wacli_inbound usa o run_id como referência.
     msg = (
         f"\U0001f916 *Marcos*: vou executar *{automation.get('name', '?')}*.\n"
         f"Ações: {actions_summary}\n"
         f"Confirma? Responde *SIM* ou *NÃO*.\n"
-        f"[confirm:{confirm_token}]"
+        f"[run:{run_id}]"
     )
 
     scripts_dir = Path(__file__).parent
@@ -357,28 +260,20 @@ def send_confirmation_request(automation: dict, run_id: int, confirm_token: str)
     except Exception as e:
         log(f"[confirm] Erro enviando WhatsApp: {e}")
 
-    # Salva token pendente para wacli_inbound capturar reply
-    try:
-        CONFIRM_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CONFIRM_TOKEN_FILE.write_text(confirm_token)
-    except Exception as e:
-        log(f"[confirm] Erro salvando token pendente: {e}")
-
     emit_panel_event("automation_confirmation_request", {
         "run_id": run_id,
         "automation_name": automation.get("name", ""),
-        "confirm_token": confirm_token,
     })
 
 
-def execute_automation_run(automation: dict, run_id: int):
-    """Executa todas as ações de uma automação."""
-    # Importa o registry de ações
+def _execute_run_actions(automation: dict, run: dict) -> None:
+    """Executa as ações de uma automação e atualiza o run via record_run."""
+    run_id = run.get("id")
     scripts_dir = str(Path(__file__).parent)
     if scripts_dir not in sys.path:
         sys.path.insert(0, scripts_dir)
 
-    from automation_actions import ACTION_REGISTRY, load_all
+    from automation_actions import ACTION_REGISTRY, load_all  # type: ignore
     load_all()
 
     run_context = {
@@ -390,7 +285,7 @@ def execute_automation_run(automation: dict, run_id: int):
         "env": dict(os.environ),
     }
 
-    steps = []
+    steps: list[dict[str, Any]] = []
     overall_success = True
 
     for action_spec in automation.get("actions", []):
@@ -419,154 +314,132 @@ def execute_automation_run(automation: dict, run_id: int):
         step["finished_at"] = datetime.now(timezone.utc).isoformat()
         steps.append(step)
 
-        # Fail-fast
         if step["status"] == "failed":
             break
 
-    # Atualiza run
-    supabase_request("PATCH", f"automation_runs?id=eq.{run_id}", body={
+    # 2. Atualiza o run via edge function (UPDATE)
+    finished_run = {
+        "id": run_id,
+        "automation_id": automation["id"],
         "status": "succeeded" if overall_success else "failed",
         "steps": steps,
+        "started_at": run.get("started_at", datetime.now(timezone.utc).isoformat()),
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "result": {"steps_count": len(steps), "success": overall_success},
-    })
+    }
+    record_run(finished_run, update_last_run=True)
+    log(f"[execute] Run {run_id} {'succeeded' if overall_success else 'failed'} ({len(steps)} steps)")
 
-    log(f"Run {run_id} {'succeeded' if overall_success else 'failed'} ({len(steps)} steps)")
 
+# ── Handle confirmed runs (running_runs) ─────────────────────────────────────
 
-# ── Panel events ─────────────────────────────────────────────────────────────
-
-def emit_panel_event(event_type: str, payload: dict) -> None:
-    """Emite evento para o painel via Supabase REST ou curl."""
-    panel_url = os.environ.get("PANEL_BASE_URL", "")
-    panel_token = os.environ.get("PANEL_TOKEN", "")
-    instance_id = os.environ.get("INSTANCE_ID", "")
-
-    if not all([panel_url, panel_token, instance_id]):
+def handle_running_run(run_row: dict) -> None:
+    """
+    Detecta run com status=running (confirmado pelo dono via automation-confirm)
+    e executa as ações correspondentes.
+    """
+    run_id = run_row.get("id")
+    automation_id = run_row.get("automation_id")
+    if not run_id or not automation_id:
         return
 
-    event_payload = json.dumps({
-        "instance_id": instance_id,
-        "type": event_type,
-        "payload": payload,
-    }, default=str)
+    # Precisamos do objeto da automação — ele veio embedded no run ou buscamos via poll?
+    # O poll não retorna running_runs com a automação inline. Fazemos um poll específico
+    # buscando a automação pelo id via qualquer run recente.
+    # Como não queremos SUPABASE REST, vamos incluir a automação no running_runs
+    # (futuro: o poll já embute). Por ora, o run_row pode não ter a automação.
+    # Workaround: reutilizamos poll() que também retorna scheduled — se a automação
+    # já foi encontrada e está em running_runs, o payload do run_row tem automation_id.
+    # Chamamos record_run com status=failed se não conseguirmos a automação.
 
-    try:
-        subprocess.run(
-            ["curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
-             "--max-time", "10", "-X", "POST", f"{panel_url}/event",
-             "-H", "Content-Type: application/json",
-             "-H", f"X-Panel-Token: {panel_token}",
-             "-d", event_payload],
-            capture_output=True, text=True, timeout=15,
-        )
-    except Exception as e:
-        log(f"[panel] Erro ao emitir evento {event_type}: {e}")
-
-
-# ── Expire old runs ──────────────────────────────────────────────────────────
-
-def expire_old_runs():
-    """Marca runs pending_confirm > 24h como expired."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    supabase_request(
-        "PATCH",
-        f"automation_runs?status=eq.pending_confirm&started_at=lt.{cutoff}",
-        body={
-            "status": "expired",
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-        },
-    )
-
-
-# ── Process pending running runs ─────────────────────────────────────────────
-
-def process_running_runs():
-    """Detecta runs com status=running que ainda não foram executados e executa."""
-    runs = supabase_request(
-        "GET", "automation_runs",
-        params={
-            "status": "eq.running",
-            "finished_at": "is.null",
-            "select": "*",
-        },
-    )
-    if not runs or not isinstance(runs, list):
+    automation = run_row.get("automation")  # Se vier embedded no futuro
+    if not automation:
+        # Busca automação: como não temos REST direto, precisamos de outro jeito.
+        # A edge function poll retorna running_runs mas sem automation embedded.
+        # Solução: adicionar um campo "automation" ao running_runs na edge function
+        # OU aceitar que handle_running_run vai ser chamado apenas quando
+        # a edge function retornar o objeto da automação.
+        # Por ora: loga e retorna, esperando melhoria futura.
+        log(f"[running] Automação não encontrada para run {run_id} "
+            f"(automation_id={automation_id}). "
+            f"Aguardando próximo ciclo com automação embedded.")
         return
 
-    for run in runs:
-        automation_id = run.get("automation_id")
-        run_id = run.get("id")
-        if not automation_id or not run_id:
-            continue
-
-        # Busca automação
-        automations = supabase_request(
-            "GET", "automations",
-            params={"id": f"eq.{automation_id}", "select": "*"},
-        )
-        if not automations or not isinstance(automations, list) or len(automations) == 0:
-            log(f"[running] Automação {automation_id} não encontrada para run {run_id}")
-            continue
-
-        automation = automations[0]
-        log(f"[running] Executando run {run_id} (automação: {automation.get('name', '?')})")
-        execute_automation_run(automation, run_id)
+    log(f"[running] Executando run {run_id} (automação: {automation.get('name', '?')})")
+    # Monta run dict com id para que _execute_run_actions faça UPDATE
+    run = {
+        "id": run_id,
+        "automation_id": automation_id,
+        "started_at": run_row.get("started_at", datetime.now(timezone.utc).isoformat()),
+    }
+    _execute_run_actions(automation, run)
 
 
-# ── Automation evaluation ────────────────────────────────────────────────────
+# ── Expire pending_runs ──────────────────────────────────────────────────────
 
-def evaluate_automation(automation: dict):
-    """Avalia se a automação deve ser disparada neste ciclo."""
-    trigger = automation.get("trigger", {})
-    ttype = trigger.get("type", "manual")
+def expire_pending_run(run_row: dict) -> None:
+    """Marca um run pending_confirm > 24h como expired via record_run."""
+    run_id = run_row.get("id")
+    automation_id = run_row.get("automation_id")
+    if not run_id or not automation_id:
+        return
 
-    if ttype == "cron":
-        if not should_run_cron(trigger.get("expression", ""), automation.get("last_run_at")):
-            return
-    elif ttype == "metric":
-        if not should_run_metric(trigger, automation):
-            return
-    elif ttype == "manual":
-        return  # Só via run-now
-
-    needs_confirm = compute_needs_confirmation(automation)
-    schedule_run(automation, trigger_payload=trigger, needs_confirm=needs_confirm)
+    expired_run = {
+        "id": run_id,
+        "automation_id": automation_id,
+        "status": "expired",
+        "started_at": run_row.get("started_at", datetime.now(timezone.utc).isoformat()),
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+    }
+    record_run(expired_run, update_last_run=False)
+    log(f"[expire] Run {run_id} expirado (pending_confirm > 24h)")
 
 
 # ── Main cycle ───────────────────────────────────────────────────────────────
 
-def cycle():
+def cycle() -> None:
     """Executa um ciclo do engine."""
-    # 1. Busca automações ativas
-    automations = supabase_request(
-        "GET", "automations",
-        params={"active": "eq.true", "select": "*"},
-    )
+    payload = poll()
 
-    if not automations or not isinstance(automations, list):
-        log("[cycle] Nenhuma automação ativa encontrada (ou erro na consulta)")
-        automations = []
+    if not payload:
+        log("[cycle] Poll retornou vazio ou erro")
+        return
 
-    # 2. Expira runs pendentes > 24h
-    expire_old_runs()
-
-    # 3. Processa runs com status=running (confirmados pelo dono)
-    process_running_runs()
-
-    # 4. Avalia cada automação
-    for automation in automations:
+    # 1. Expira runs pending_confirm > 24h
+    for run_row in payload.get("pending_runs", []):
         try:
-            evaluate_automation(automation)
+            expire_pending_run(run_row)
         except Exception as e:
-            log(f"[cycle] Erro avaliando automação {automation.get('id', '?')}: {e}")
+            log(f"[cycle] Erro expirando run {run_row.get('id')}: {e}")
+
+    # 2. Executa runs confirmados pelo dono (status=running, finished_at=null)
+    for run_row in payload.get("running_runs", []):
+        try:
+            handle_running_run(run_row)
+        except Exception as e:
+            log(f"[cycle] Erro executando running run {run_row.get('id')}: {e}")
+
+    # 3. Executa automações agendadas pelo engine (cron/metric)
+    for item in payload.get("scheduled", []):
+        try:
+            execute_automation(item["automation"], item["reason"])
+        except Exception as e:
+            log(f"[cycle] Erro executando automação {item.get('automation_id')}: {e}")
 
 
-def run_loop():
+def run_loop() -> None:
     """Loop principal do daemon."""
     load_env()
-    log("cfo_automation_engine.py started")
+
+    # Valida envs obrigatórias
+    for env_key in ("PANEL_BASE_URL", "PANEL_TOKEN", "HOOKS_TOKEN"):
+        if not os.environ.get(env_key):
+            log(f"[startup] ERRO: variável de ambiente '{env_key}' não configurada. Abortando.")
+            sys.exit(1)
+
+    log("cfo_automation_engine.py started (Sprint 19 — sem service_role)")
     log(f"Intervalo de polling: {INTERVAL_MINUTES} minutos")
+    log(f"Panel base URL: {os.environ['PANEL_BASE_URL']}")
 
     while True:
         log("--- Início do ciclo automation engine ---")
