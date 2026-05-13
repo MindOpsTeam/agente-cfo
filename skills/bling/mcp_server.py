@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-MCP server para Bling — 101 tools.
+MCP server para Bling — 116 tools.
 Endpoints cobertos: saldo, contas a pagar/receber, produtos, pedidos de venda/compra,
 NF-e, NFC-e, NFS-e, contatos, fornecedores, estoque, categorias, formas de pagamento,
 contas correntes, servicos, logisticas, depositos, webhooks, vendedores, naturezas de
 operacao, borderos, transferencias, contratos, propostas, ordens de producao, notas de
-compra, campos customizados, situacoes, formatos, homologacoes.
+compra, campos customizados, situacoes, formatos, homologacoes, tributacoes, unidades
+de medida.
 """
 import asyncio
 import json
@@ -329,6 +330,17 @@ async def list_tools() -> list[types.Tool]:
         # ── Natureza de operacao ───────────────────────────────────────
         types.Tool(name='bling_naturezas_operacao_listar', description='Lista naturezas de operacao',
             inputSchema=_schema({**_PAGINATED})),
+        types.Tool(name='bling_naturezas_operacao_detalhar', description='Detalha uma natureza de operacao pelo ID',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID da natureza de operacao'}}, ['id'])),
+        types.Tool(name='bling_naturezas_operacao_criar', description='Cria uma natureza de operacao no Bling',
+            inputSchema=_schema({'body': {'type': 'object', 'description': 'Corpo da natureza de operacao conforme API Bling v3'}}, ['body'])),
+        types.Tool(name='bling_naturezas_operacao_atualizar', description='Atualiza uma natureza de operacao existente',
+            inputSchema=_schema({
+                'id': {'type': 'string', 'description': 'ID da natureza de operacao'},
+                'body': {'type': 'object', 'description': 'Corpo da atualizacao'},
+            }, ['id', 'body'])),
+        types.Tool(name='bling_naturezas_operacao_excluir', description='Exclui uma natureza de operacao do Bling',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID da natureza de operacao'}}, ['id'])),
         # ── Formas de recebimento ──────────────────────────────────────
         types.Tool(name='bling_formas_recebimento_listar', description='Lista formas de recebimento',
             inputSchema=_schema({**_PAGINATED})),
@@ -356,6 +368,13 @@ async def list_tools() -> list[types.Tool]:
             inputSchema=_schema({
                 'body': {'type': 'object', 'description': 'Corpo do contrato conforme API Bling v3'},
             }, ['body'])),
+        types.Tool(name='bling_contratos_atualizar', description='Atualiza um contrato existente no Bling',
+            inputSchema=_schema({
+                'id': {'type': 'string', 'description': 'ID do contrato'},
+                'body': {'type': 'object', 'description': 'Corpo da atualizacao'},
+            }, ['id', 'body'])),
+        types.Tool(name='bling_contratos_excluir', description='Exclui um contrato do Bling',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID do contrato'}}, ['id'])),
         # ── Propostas comerciais ───────────────────────────────────────
         types.Tool(name='bling_propostas_listar', description='Lista propostas comerciais do Bling',
             inputSchema=_schema({**_PAGINATED})),
@@ -379,6 +398,35 @@ async def list_tools() -> list[types.Tool]:
             inputSchema=_schema({**_PAGINATED})),
         types.Tool(name='bling_notas_compra_detalhar', description='Detalha uma nota de compra pelo ID',
             inputSchema=_schema({'id': {'type': 'string', 'description': 'ID da nota de compra'}}, ['id'])),
+        # ── Tributacoes ────────────────────────────────────────────────
+        types.Tool(name='bling_tributacoes_listar', description='Lista tributacoes cadastradas no Bling',
+            inputSchema=_schema({**_PAGINATED})),
+        types.Tool(name='bling_tributacoes_detalhar', description='Detalha uma tributacao pelo ID',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID da tributacao'}}, ['id'])),
+        # ── Unidades de medida ─────────────────────────────────────────
+        types.Tool(name='bling_unidades_medida_listar', description='Lista unidades de medida cadastradas no Bling',
+            inputSchema=_schema({})),
+        # ── Fornecedores excluir ───────────────────────────────────────
+        types.Tool(name='bling_fornecedores_excluir', description='Exclui um fornecedor do Bling',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID do fornecedor'}}, ['id'])),
+        # ── Vendedores extras ──────────────────────────────────────────
+        types.Tool(name='bling_vendedores_atualizar', description='Atualiza um vendedor existente no Bling',
+            inputSchema=_schema({
+                'id': {'type': 'string', 'description': 'ID do vendedor'},
+                'body': {'type': 'object', 'description': 'Corpo da atualizacao'},
+            }, ['id', 'body'])),
+        types.Tool(name='bling_vendedores_excluir', description='Exclui um vendedor do Bling',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID do vendedor'}}, ['id'])),
+        # ── Depositos extras ───────────────────────────────────────────
+        types.Tool(name='bling_depositos_criar', description='Cria um deposito/armazem no Bling',
+            inputSchema=_schema({'body': {'type': 'object', 'description': 'Corpo do deposito conforme API Bling v3'}}, ['body'])),
+        types.Tool(name='bling_depositos_atualizar', description='Atualiza um deposito/armazem existente',
+            inputSchema=_schema({
+                'id': {'type': 'string', 'description': 'ID do deposito'},
+                'body': {'type': 'object', 'description': 'Corpo da atualizacao'},
+            }, ['id', 'body'])),
+        types.Tool(name='bling_depositos_excluir', description='Exclui um deposito/armazem do Bling',
+            inputSchema=_schema({'id': {'type': 'string', 'description': 'ID do deposito'}}, ['id'])),
     ]
 
 
@@ -633,6 +681,14 @@ def _dispatch(name: str, args: dict):
         # ── Natureza de operacao ───────────────────────────────────
         case 'bling_naturezas_operacao_listar':
             return c.list_nature_operations(page=args.get('page', 1), limit=args.get('limit', 100))
+        case 'bling_naturezas_operacao_detalhar':
+            return c._get(f"naturezas-de-operacao/{args['id']}")
+        case 'bling_naturezas_operacao_criar':
+            return c._post_json("naturezas-de-operacao", args['body'])
+        case 'bling_naturezas_operacao_atualizar':
+            return c._put(f"naturezas-de-operacao/{args['id']}", args['body'])
+        case 'bling_naturezas_operacao_excluir':
+            return c._delete(f"naturezas-de-operacao/{args['id']}")
         # ── Formas de recebimento ──────────────────────────────────
         case 'bling_formas_recebimento_listar':
             return c.list_receipt_methods(page=args.get('page', 1), limit=args.get('limit', 100))
@@ -656,6 +712,10 @@ def _dispatch(name: str, args: dict):
             return c.get_contract(args['id'])
         case 'bling_contratos_criar':
             return c.create_contract(args['body'])
+        case 'bling_contratos_atualizar':
+            return c._put(f"contratos/{args['id']}", args['body'])
+        case 'bling_contratos_excluir':
+            return c._delete(f"contratos/{args['id']}")
         # ── Propostas comerciais ───────────────────────────────────
         case 'bling_propostas_listar':
             return c.list_proposals(page=args.get('page', 1), limit=args.get('limit', 100))
@@ -675,6 +735,29 @@ def _dispatch(name: str, args: dict):
             return c.list_purchase_notes(page=args.get('page', 1), limit=args.get('limit', 100))
         case 'bling_notas_compra_detalhar':
             return c.get_purchase_note(args['id'])
+        # ── Tributacoes ────────────────────────────────────────────
+        case 'bling_tributacoes_listar':
+            return c._get(f"tributacoes?pagina={args.get('page', 1)}&limite={args.get('limit', 100)}")
+        case 'bling_tributacoes_detalhar':
+            return c._get(f"tributacoes/{args['id']}")
+        # ── Unidades de medida ─────────────────────────────────────
+        case 'bling_unidades_medida_listar':
+            return c._get("unidades")
+        # ── Fornecedores excluir ───────────────────────────────────
+        case 'bling_fornecedores_excluir':
+            return c._delete(f"contatos/{args['id']}")
+        # ── Vendedores extras ──────────────────────────────────────
+        case 'bling_vendedores_atualizar':
+            return c._put(f"vendedores/{args['id']}", args['body'])
+        case 'bling_vendedores_excluir':
+            return c._delete(f"vendedores/{args['id']}")
+        # ── Depositos extras ───────────────────────────────────────
+        case 'bling_depositos_criar':
+            return c._post_json("depositos", args['body'])
+        case 'bling_depositos_atualizar':
+            return c._put(f"depositos/{args['id']}", args['body'])
+        case 'bling_depositos_excluir':
+            return c._delete(f"depositos/{args['id']}")
         case _:
             raise ValueError(f'Tool desconhecida: {name}')
 
