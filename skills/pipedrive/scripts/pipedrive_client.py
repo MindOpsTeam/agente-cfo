@@ -476,6 +476,445 @@ class PipedriveClient(BaseCRMClient):
                  for f in (raw.get("data") or [])]
         return {"items": items, "count": len(items)}
 
+    # ── Leads (Inbox) ───────────────────────────────────────────────────────
+    def list_leads(self, limit=50, start=0):
+        raw = self._get("leads", f"limit={min(limit, 500)}&start={start}")
+        items = raw.get("data", []) or []
+        return {"items": items, "count": len(items)}
+
+    def get_lead(self, id: str):
+        raw = self._get(f"leads/{id}")
+        return raw.get("data") or {}
+
+    def create_lead(self, title: str, person_id=None, organization_id=None, value=None):
+        body = {"title": title}
+        if person_id: body["person_id"] = int(person_id)
+        if organization_id: body["organization_id"] = int(organization_id)
+        if value: body["value"] = {"amount": value, "currency": "BRL"}
+        raw = self._post("leads", body)
+        return {"success": True, "action": "create_lead", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def update_lead(self, id: str, title=None, label_ids=None):
+        body = {}
+        if title: body["title"] = title
+        if label_ids: body["label_ids"] = label_ids
+        raw = http_request("PATCH", self._url(f"leads/{id}"), headers={"Content-Type": "application/json", "Accept": "application/json"}, body=_json.dumps(body).encode())
+        return {"success": True, "action": "update_lead", "id": id, "raw": raw}
+
+    def delete_lead(self, id: str):
+        raw = self._delete(f"leads/{id}")
+        return {"success": True, "action": "delete_lead", "id": id, "raw": raw}
+
+    # ── Lead Labels ─────────────────────────────────────────────────────────
+    def list_lead_labels(self):
+        raw = self._get("leadLabels")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def create_lead_label(self, name: str, color: str = "blue"):
+        raw = self._post("leadLabels", {"name": name, "color": color})
+        return {"success": True, "action": "create_lead_label", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def update_lead_label(self, id: str, name: str = None, color: str = None):
+        body = {}
+        if name: body["name"] = name
+        if color: body["color"] = color
+        raw = self._put(f"leadLabels/{id}", body)
+        return {"success": True, "action": "update_lead_label", "id": id, "raw": raw}
+
+    def delete_lead_label(self, id: str):
+        raw = self._delete(f"leadLabels/{id}")
+        return {"success": True, "action": "delete_lead_label", "id": id, "raw": raw}
+
+    # ── Persons (extend) ────────────────────────────────────────────────────
+    def merge_persons(self, id: str, merge_with_id: str):
+        raw = self._put(f"persons/{id}/merge", {"merge_with_id": int(merge_with_id)})
+        return {"success": True, "action": "merge_persons", "id": id, "raw": raw}
+
+    def list_person_deals(self, id: str, limit=50, start=0):
+        raw = self._get(f"persons/{id}/deals", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_person_activities(self, id: str, limit=50, start=0):
+        raw = self._get(f"persons/{id}/activities", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_person_files(self, id: str, limit=50, start=0):
+        raw = self._get(f"persons/{id}/files", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_person_updates(self, id: str, limit=50, start=0):
+        raw = self._get(f"persons/{id}/flow", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_person_followers(self, id: str):
+        raw = self._get(f"persons/{id}/followers")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def add_person_follower(self, id: str, user_id: int):
+        raw = self._post(f"persons/{id}/followers", {"user_id": user_id})
+        return {"success": True, "action": "add_person_follower", "raw": raw}
+
+    def delete_person_follower(self, id: str, follower_id: int):
+        raw = self._delete(f"persons/{id}/followers/{follower_id}")
+        return {"success": True, "action": "delete_person_follower", "raw": raw}
+
+    # ── Organizations (extend) ──────────────────────────────────────────────
+    def merge_organizations(self, id: str, merge_with_id: str):
+        raw = self._put(f"organizations/{id}/merge", {"merge_with_id": int(merge_with_id)})
+        return {"success": True, "action": "merge_orgs", "id": id, "raw": raw}
+
+    def list_org_deals(self, id: str, limit=50, start=0):
+        raw = self._get(f"organizations/{id}/deals", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_org_persons(self, id: str, limit=50, start=0):
+        raw = self._get(f"organizations/{id}/persons", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_org_activities(self, id: str, limit=50, start=0):
+        raw = self._get(f"organizations/{id}/activities", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_org_files(self, id: str, limit=50, start=0):
+        raw = self._get(f"organizations/{id}/files", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_org_updates(self, id: str, limit=50, start=0):
+        raw = self._get(f"organizations/{id}/flow", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_org_followers(self, id: str):
+        raw = self._get(f"organizations/{id}/followers")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def add_org_follower(self, id: str, user_id: int):
+        raw = self._post(f"organizations/{id}/followers", {"user_id": user_id})
+        return {"success": True, "action": "add_org_follower", "raw": raw}
+
+    # ── Deals (extend) ──────────────────────────────────────────────────────
+    def merge_deals(self, id: str, merge_with_id: str):
+        raw = self._put(f"deals/{id}/merge", {"merge_with_id": int(merge_with_id)})
+        return {"success": True, "action": "merge_deals", "id": id, "raw": raw}
+
+    def list_deal_followers(self, id: str):
+        raw = self._get(f"deals/{id}/followers")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def add_deal_follower(self, id: str, user_id: int):
+        raw = self._post(f"deals/{id}/followers", {"user_id": user_id})
+        return {"success": True, "action": "add_deal_follower", "raw": raw}
+
+    def list_deal_participants(self, id: str, limit=50, start=0):
+        raw = self._get(f"deals/{id}/participants", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def add_deal_participant(self, id: str, person_id: int):
+        raw = self._post(f"deals/{id}/participants", {"person_id": person_id})
+        return {"success": True, "action": "add_deal_participant", "raw": raw}
+
+    def delete_deal_participant(self, deal_id: str, participant_id: int):
+        raw = self._delete(f"deals/{deal_id}/participants/{participant_id}")
+        return {"success": True, "action": "delete_deal_participant", "raw": raw}
+
+    def list_deal_updates(self, id: str, limit=50, start=0):
+        raw = self._get(f"deals/{id}/flow", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_deal_files(self, id: str, limit=50, start=0):
+        raw = self._get(f"deals/{id}/files", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_deal_activities(self, id: str, limit=50, start=0):
+        raw = self._get(f"deals/{id}/activities", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_deal_products(self, id: str, limit=50, start=0):
+        raw = self._get(f"deals/{id}/products", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def add_deal_product(self, id: str, product_id: int, item_price: float, quantity: int = 1):
+        raw = self._post(f"deals/{id}/products", {"product_id": product_id, "item_price": item_price, "quantity": quantity})
+        return {"success": True, "action": "add_deal_product", "raw": raw}
+
+    def update_deal_product(self, deal_id: str, product_attachment_id: int, item_price: float = None, quantity: int = None):
+        body = {}
+        if item_price is not None: body["item_price"] = item_price
+        if quantity is not None: body["quantity"] = quantity
+        raw = self._put(f"deals/{deal_id}/products/{product_attachment_id}", body)
+        return {"success": True, "action": "update_deal_product", "raw": raw}
+
+    def delete_deal_product(self, deal_id: str, product_attachment_id: int):
+        raw = self._delete(f"deals/{deal_id}/products/{product_attachment_id}")
+        return {"success": True, "action": "delete_deal_product", "raw": raw}
+
+    def list_deal_mail_messages(self, id: str, limit=50, start=0):
+        raw = self._get(f"deals/{id}/mailMessages", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Activities (extend) ─────────────────────────────────────────────────
+    def get_activity(self, id: str):
+        raw = self._get(f"activities/{id}")
+        return raw.get("data") or {}
+
+    def update_activity(self, id: str, subject=None, done=None, due_date=None, type=None):
+        body = {}
+        if subject: body["subject"] = subject
+        if done is not None: body["done"] = 1 if done else 0
+        if due_date: body["due_date"] = due_date
+        if type: body["type"] = type
+        raw = self._put(f"activities/{id}", body)
+        return {"success": True, "action": "update_activity", "id": id, "raw": raw}
+
+    def delete_activity(self, id: str):
+        raw = self._delete(f"activities/{id}")
+        return {"success": True, "action": "delete_activity", "id": id, "raw": raw}
+
+    def list_activity_types(self):
+        raw = self._get("activityTypes")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Files ───────────────────────────────────────────────────────────────
+    def list_files(self, limit=50, start=0):
+        raw = self._get("files", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def get_file(self, id: str):
+        raw = self._get(f"files/{id}")
+        return raw.get("data") or {}
+
+    def delete_file(self, id: str):
+        raw = self._delete(f"files/{id}")
+        return {"success": True, "action": "delete_file", "id": id, "raw": raw}
+
+    # ── Filters (extend) ────────────────────────────────────────────────────
+    def create_filter(self, name: str, type: str, conditions: dict):
+        raw = self._post("filters", {"name": name, "type": type, "conditions": conditions})
+        return {"success": True, "action": "create_filter", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def get_filter(self, id: str):
+        raw = self._get(f"filters/{id}")
+        return raw.get("data") or {}
+
+    def update_filter(self, id: str, name=None, conditions=None):
+        body = {}
+        if name: body["name"] = name
+        if conditions: body["conditions"] = conditions
+        raw = self._put(f"filters/{id}", body)
+        return {"success": True, "action": "update_filter", "id": id, "raw": raw}
+
+    def delete_filter(self, id: str):
+        raw = self._delete(f"filters/{id}")
+        return {"success": True, "action": "delete_filter", "id": id, "raw": raw}
+
+    # ── Call Logs ───────────────────────────────────────────────────────────
+    def list_call_logs(self, limit=50, start=0):
+        raw = self._get("callLogs", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def create_call_log(self, subject: str, duration: int, outcome: str, to_phone: str, from_phone: str = "", deal_id=None, person_id=None, org_id=None):
+        body = {"subject": subject, "duration": duration, "outcome": outcome, "to_phone_number": to_phone}
+        if from_phone: body["from_phone_number"] = from_phone
+        if deal_id: body["deal_id"] = int(deal_id)
+        if person_id: body["person_id"] = int(person_id)
+        if org_id: body["org_id"] = int(org_id)
+        raw = self._post("callLogs", body)
+        return {"success": True, "action": "create_call_log", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def get_call_log(self, id: str):
+        raw = self._get(f"callLogs/{id}")
+        return raw.get("data") or {}
+
+    def delete_call_log(self, id: str):
+        raw = self._delete(f"callLogs/{id}")
+        return {"success": True, "action": "delete_call_log", "id": id, "raw": raw}
+
+    # ── Mailbox ─────────────────────────────────────────────────────────────
+    def list_mail_threads(self, limit=50, start=0, folder="inbox"):
+        raw = self._get("mailbox/mailThreads", f"limit={min(limit, 500)}&start={start}&folder={folder}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_mail_messages(self, thread_id: str):
+        raw = self._get(f"mailbox/mailThreads/{thread_id}/mailMessages")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def get_mail_message(self, id: str):
+        raw = self._get(f"mailbox/mailMessages/{id}")
+        return raw.get("data") or {}
+
+    # ── Custom Fields ───────────────────────────────────────────────────────
+    def list_deal_fields(self):
+        raw = self._get("dealFields")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_person_fields(self):
+        raw = self._get("personFields")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_org_fields(self):
+        raw = self._get("organizationFields")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_activity_fields(self):
+        raw = self._get("activityFields")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_product_fields(self):
+        raw = self._get("productFields")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Products (extend) ───────────────────────────────────────────────────
+    def update_product(self, id: str, name=None, code=None, unit=None, price=None):
+        body = {}
+        if name: body["name"] = name
+        if code: body["code"] = code
+        if unit: body["unit"] = unit
+        if price is not None: body["prices"] = [{"price": price, "currency": "BRL"}]
+        raw = self._put(f"products/{id}", body)
+        return {"success": True, "action": "update_product", "id": id, "raw": raw}
+
+    def delete_product(self, id: str):
+        raw = self._delete(f"products/{id}")
+        return {"success": True, "action": "delete_product", "id": id, "raw": raw}
+
+    def list_product_deals(self, id: str, limit=50, start=0):
+        raw = self._get(f"products/{id}/deals", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def list_product_files(self, id: str, limit=50, start=0):
+        raw = self._get(f"products/{id}/files", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Roles ───────────────────────────────────────────────────────────────
+    def list_roles(self):
+        raw = self._get("roles")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    def create_role(self, name: str, parent_role_id=None):
+        body = {"name": name}
+        if parent_role_id: body["parent_role_id"] = int(parent_role_id)
+        raw = self._post("roles", body)
+        return {"success": True, "action": "create_role", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def get_role(self, id: str):
+        raw = self._get(f"roles/{id}")
+        return raw.get("data") or {}
+
+    def update_role(self, id: str, name: str):
+        raw = self._put(f"roles/{id}", {"name": name})
+        return {"success": True, "action": "update_role", "id": id, "raw": raw}
+
+    def delete_role(self, id: str):
+        raw = self._delete(f"roles/{id}")
+        return {"success": True, "action": "delete_role", "id": id, "raw": raw}
+
+    def list_role_assignments(self, id: str):
+        raw = self._get(f"roles/{id}/assignments")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Recents ─────────────────────────────────────────────────────────────
+    def get_recents(self, since_timestamp: str, items: str = "deal", limit=50, start=0):
+        raw = self._get("recents", f"since_timestamp={since_timestamp}&items={items}&limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Item Search ─────────────────────────────────────────────────────────
+    def search_items(self, term: str, item_types: str = "deal", limit=50, start=0):
+        raw = self._get("itemSearch", f"term={term}&item_types={item_types}&limit={min(limit, 500)}&start={start}")
+        data = raw.get("data", {}) or {}
+        items = data.get("items", []) if isinstance(data, dict) else []
+        return {"items": items, "count": len(items)}
+
+    # ── Notes (extend) ──────────────────────────────────────────────────────
+    def get_note(self, id: str):
+        raw = self._get(f"notes/{id}")
+        return raw.get("data") or {}
+
+    def update_note(self, id: str, content: str):
+        raw = self._put(f"notes/{id}", {"content": content})
+        return {"success": True, "action": "update_note", "id": id, "raw": raw}
+
+    def delete_note(self, id: str):
+        raw = self._delete(f"notes/{id}")
+        return {"success": True, "action": "delete_note", "id": id, "raw": raw}
+
+    # ── User detail ─────────────────────────────────────────────────────────
+    def get_user(self, id: str):
+        raw = self._get(f"users/{id}")
+        return raw.get("data") or {}
+
+    # ── Currencies ──────────────────────────────────────────────────────────
+    def list_currencies(self):
+        raw = self._get("currencies")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Pipelines (extend) ──────────────────────────────────────────────────
+    def get_pipeline(self, id: str):
+        raw = self._get(f"pipelines/{id}")
+        return raw.get("data") or {}
+
+    def get_pipeline_deals(self, id: str, limit=50, start=0):
+        raw = self._get(f"pipelines/{id}/deals", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Pipelines (write) ───────────────────────────────────────────────────
+    def create_pipeline(self, name: str, deal_probability: int = 1, active: bool = True):
+        body = {"name": name, "deal_probability": 1 if deal_probability else 0, "active": active}
+        raw = self._post("pipelines", body)
+        return {"success": True, "action": "create_pipeline", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def update_pipeline(self, id: str, name=None, deal_probability=None, active=None):
+        body = {}
+        if name: body["name"] = name
+        if deal_probability is not None: body["deal_probability"] = deal_probability
+        if active is not None: body["active"] = active
+        raw = self._put(f"pipelines/{id}", body)
+        return {"success": True, "action": "update_pipeline", "id": id, "raw": raw}
+
+    def delete_pipeline(self, id: str):
+        raw = self._delete(f"pipelines/{id}")
+        return {"success": True, "action": "delete_pipeline", "id": id, "raw": raw}
+
+    # ── Stages (write) ──────────────────────────────────────────────────────
+    def get_stage(self, id: str):
+        raw = self._get(f"stages/{id}")
+        return raw.get("data") or {}
+
+    def create_stage(self, name: str, pipeline_id: int, order_nr: int = None):
+        body = {"name": name, "pipeline_id": pipeline_id}
+        if order_nr is not None: body["order_nr"] = order_nr
+        raw = self._post("stages", body)
+        return {"success": True, "action": "create_stage", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def update_stage(self, id: str, name=None, order_nr=None, pipeline_id=None):
+        body = {}
+        if name: body["name"] = name
+        if order_nr is not None: body["order_nr"] = order_nr
+        if pipeline_id: body["pipeline_id"] = pipeline_id
+        raw = self._put(f"stages/{id}", body)
+        return {"success": True, "action": "update_stage", "id": id, "raw": raw}
+
+    def delete_stage(self, id: str):
+        raw = self._delete(f"stages/{id}")
+        return {"success": True, "action": "delete_stage", "id": id, "raw": raw}
+
+    def list_stage_deals(self, id: str, limit=50, start=0):
+        raw = self._get(f"stages/{id}/deals", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Lead Sources ────────────────────────────────────────────────────────
+    def list_lead_sources(self):
+        raw = self._get("leadSources")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Person emails (mailMessages) ────────────────────────────────────────
+    def list_person_mail_messages(self, id: str, limit=50, start=0):
+        raw = self._get(f"persons/{id}/mailMessages", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
+    # ── Org mail messages ───────────────────────────────────────────────────
+    def list_org_mail_messages(self, id: str, limit=50, start=0):
+        raw = self._get(f"organizations/{id}/mailMessages", f"limit={min(limit, 500)}&start={start}")
+        return {"items": raw.get("data", []) or [], "count": len(raw.get("data", []) or [])}
+
 
 if __name__ == "__main__":
     try:
