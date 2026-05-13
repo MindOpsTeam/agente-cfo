@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-MCP server para Pipedrive — 127 tools.
+MCP server para Pipedrive — 144 tools.
 Endpoints cobertos: deals, persons, organizations, activities, products,
 pipelines, stages, notes, users, webhooks, goals, filters, empresa,
 leads, lead labels, files, call logs, mailbox, custom fields, roles,
-recents, item search, currencies.
+recents, item search, currencies, subscriptions, projects, meetings, changelogs.
 """
 import asyncio
 import json
@@ -527,6 +527,65 @@ async def list_tools() -> list[types.Tool]:
             'id': {'type': 'string'}, 'limit': {'type': 'integer', 'default': 50},
             'start': {'type': 'integer', 'default': 0},
         }, ['id']),
+
+        # ── Subscriptions (recurring revenue) ──────────────────────────
+        _t('pipedrive_subscriptions_listar', 'Lista subscriptions/receita recorrente do Pipedrive', {
+            'limit': {'type': 'integer', 'default': 50},
+            'start': {'type': 'integer', 'default': 0},
+        }),
+        _t('pipedrive_subscription_detalhar', 'Detalhes de uma subscription', {
+            'id': {'type': 'string'},
+        }, ['id']),
+        _t('pipedrive_subscription_criar', 'Cria subscription recorrente no Pipedrive', {
+            'body': {'type': 'object', 'description': 'Corpo da subscription (deal_id, currency, cadence_type, etc)'},
+        }, ['body']),
+        _t('pipedrive_subscription_atualizar', 'Atualiza subscription recorrente', {
+            'id': {'type': 'string'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['id', 'body']),
+        _t('pipedrive_subscription_excluir', 'Exclui/cancela subscription', {
+            'id': {'type': 'string'},
+        }, ['id']),
+        _t('pipedrive_subscription_payments', 'Lista pagamentos de uma subscription', {
+            'id': {'type': 'string'},
+        }, ['id']),
+        _t('pipedrive_subscription_deal', 'Busca subscription vinculada a um deal', {
+            'deal_id': {'type': 'string'},
+        }, ['deal_id']),
+
+        # ── Projects (beta) ────────────────────────────────────────────
+        _t('pipedrive_projects_listar', 'Lista projects do Pipedrive (beta)', {
+            'limit': {'type': 'integer', 'default': 50},
+            'start': {'type': 'integer', 'default': 0},
+        }),
+        _t('pipedrive_project_criar', 'Cria project no Pipedrive', {
+            'body': {'type': 'object', 'description': 'Corpo do project (title, board_id, phase_id, etc)'},
+        }, ['body']),
+        _t('pipedrive_project_detalhar', 'Detalhes de um project', {
+            'id': {'type': 'string'},
+        }, ['id']),
+        _t('pipedrive_project_atualizar', 'Atualiza project', {
+            'id': {'type': 'string'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['id', 'body']),
+        _t('pipedrive_project_excluir', 'Exclui project', {
+            'id': {'type': 'string'},
+        }, ['id']),
+        _t('pipedrive_project_tasks', 'Lista tasks de um project', {
+            'id': {'type': 'string'},
+        }, ['id']),
+
+        # ── Meetings (scheduling) ──────────────────────────────────────
+        _t('pipedrive_meetings_providers', 'Lista providers de meeting vinculados a usuarios', {}),
+        _t('pipedrive_meetings_provider_criar', 'Vincula provider de meeting a usuario', {
+            'body': {'type': 'object', 'description': 'Corpo do provider link (user_id, provider, etc)'},
+        }, ['body']),
+        _t('pipedrive_meetings_provider_excluir', 'Remove vinculo de provider de meeting', {
+            'id': {'type': 'string'},
+        }, ['id']),
+
+        # ── Changelogs ─────────────────────────────────────────────────
+        _t('pipedrive_changelogs', 'Lista changelogs do Pipedrive', {}),
     ]
 
 
@@ -846,6 +905,44 @@ def _dispatch(name: str, args: dict):
         # Org emails
         case 'pipedrive_organizacao_emails':
             return c.list_org_mail_messages(args['id'], limit=args.get('limit', 50), start=args.get('start', 0))
+        # Subscriptions
+        case 'pipedrive_subscriptions_listar':
+            return c._get("subscriptions", {"limit": args.get("limit", 50), "start": args.get("start", 0)})
+        case 'pipedrive_subscription_detalhar':
+            return c._get(f"subscriptions/{args['id']}")
+        case 'pipedrive_subscription_criar':
+            return c._post_json("subscriptions/recurring", args.get('body', {}))
+        case 'pipedrive_subscription_atualizar':
+            return c._put(f"subscriptions/recurring/{args['id']}", args.get('body', {}))
+        case 'pipedrive_subscription_excluir':
+            return c._delete(f"subscriptions/{args['id']}")
+        case 'pipedrive_subscription_payments':
+            return c._get(f"subscriptions/{args['id']}/payments")
+        case 'pipedrive_subscription_deal':
+            return c._get(f"subscriptions/find/{args['deal_id']}")
+        # Projects
+        case 'pipedrive_projects_listar':
+            return c._get("projects", {"limit": args.get("limit", 50), "start": args.get("start", 0)})
+        case 'pipedrive_project_criar':
+            return c._post_json("projects", args.get('body', {}))
+        case 'pipedrive_project_detalhar':
+            return c._get(f"projects/{args['id']}")
+        case 'pipedrive_project_atualizar':
+            return c._put(f"projects/{args['id']}", args.get('body', {}))
+        case 'pipedrive_project_excluir':
+            return c._delete(f"projects/{args['id']}")
+        case 'pipedrive_project_tasks':
+            return c._get(f"projects/{args['id']}/tasks")
+        # Meetings
+        case 'pipedrive_meetings_providers':
+            return c._get("meetings/userProviderLinks")
+        case 'pipedrive_meetings_provider_criar':
+            return c._post_json("meetings/userProviderLinks", args.get('body', {}))
+        case 'pipedrive_meetings_provider_excluir':
+            return c._delete(f"meetings/userProviderLinks/{args['id']}")
+        # Changelogs
+        case 'pipedrive_changelogs':
+            return c._get("changelogs")
         case _:
             raise ValueError(f'Tool desconhecida: {name}')
 
