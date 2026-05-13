@@ -299,6 +299,97 @@ class MercadoLivreClient(BaseEcommerceClient):
         except Exception as e:
             return {"success": False, "action": "cancel_order", "id": id, "error": str(e)}
 
+    def _delete(self, path: str) -> dict:
+        self._ensure_token()
+        url = f"{BASE_URL}/{path.lstrip('/')}"
+        return http_request("DELETE", url, headers=self._headers())
+
+    # ── Publicações (items) extras ───────────────────────────────────────────
+    def create_product(self, data: dict):
+        return self._post("items", data)
+
+    def update_product(self, id: str, data: dict):
+        return self._put(f"items/{id}", data)
+
+    def delete_product(self, id: str):
+        return self._put(f"items/{id}", {"deleted": "true"})
+
+    def get_product_description(self, id: str):
+        return self._get(f"items/{id}/description")
+
+    def update_product_description(self, id: str, text: str):
+        return self._put(f"items/{id}/description", {"plain_text": text})
+
+    # ── Perguntas/Respostas ──────────────────────────────────────────────────
+    def list_questions(self, item_id=None, status="unanswered", limit=50):
+        uid = self._ensure_user_id()
+        params = f"seller_id={uid}&limit={min(limit, 50)}"
+        if item_id:
+            params += f"&item_id={item_id}"
+        if status:
+            params += f"&status={status}"
+        return self._get("questions/search", params)
+
+    def get_question(self, id: str):
+        return self._get(f"questions/{id}")
+
+    def answer_question(self, question_id: str, text: str):
+        return self._post(f"answers", {"question_id": int(question_id), "text": text})
+
+    # ── Mensagens do pedido ──────────────────────────────────────────────────
+    def list_messages(self, order_id: str):
+        return self._get(f"messages/orders/{order_id}")
+
+    def send_message(self, order_id: str, text: str):
+        buyer_id = None
+        try:
+            order = self._get(f"orders/{order_id}")
+            buyer_id = order.get("buyer", {}).get("id")
+        except Exception:
+            pass
+        body = {"text": text}
+        if buyer_id:
+            body["to"] = {"user_id": buyer_id}
+        return self._post(f"messages/packs/{order_id}/sellers", body)
+
+    # ── Categorias ───────────────────────────────────────────────────────────
+    def list_categories(self, site_id="MLB"):
+        return self._get(f"sites/{site_id}/categories")
+
+    def get_category(self, id: str):
+        return self._get(f"categories/{id}")
+
+    # ── Envios/Shipments ─────────────────────────────────────────────────────
+    def get_shipment(self, id: str):
+        return self._get(f"shipments/{id}")
+
+    def list_shipment_items(self, shipment_id: str):
+        return self._get(f"shipments/{shipment_id}/items")
+
+    # ── Vendedor ─────────────────────────────────────────────────────────────
+    def get_seller_reputation(self):
+        uid = self._ensure_user_id()
+        return self._get(f"users/{uid}")
+
+    # ── Devoluções ───────────────────────────────────────────────────────────
+    def list_claims(self, limit=50):
+        uid = self._ensure_user_id()
+        return self._get(f"claims/search", f"seller_id={uid}&limit={min(limit, 50)}")
+
+    # ── Campanhas/Anúncios ───────────────────────────────────────────────────
+    def list_campaigns(self):
+        uid = self._ensure_user_id()
+        return self._get(f"advertising/advertisers/{uid}/campaigns")
+
+    # ── Visitas ──────────────────────────────────────────────────────────────
+    def get_item_visits(self, item_id: str, from_date=None, to_date=None):
+        params = ""
+        if from_date:
+            params += f"date_from={from_date}"
+        if to_date:
+            params += f"&date_to={to_date}" if params else f"date_to={to_date}"
+        return self._get(f"items/{item_id}/visits", params)
+
 
 if __name__ == "__main__":
     try:
