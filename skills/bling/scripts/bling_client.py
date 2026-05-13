@@ -221,6 +221,179 @@ class BlingClient(BaseERPClient):
             pass
         return {"name": "N/A", "cnpj": None, "segment": "ERP"}
 
+    # ── PUT / DELETE helpers ────────────────────────────────────────────────
+    def _put(self, path, body: dict):
+        self._ensure_token()
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("PUT", url, headers=self._headers(),
+                            body=_json.dumps(body).encode())
+
+    def _delete(self, path):
+        self._ensure_token()
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("DELETE", url, headers=self._headers())
+
+    # ── Produtos ────────────────────────────────────────────────────────────
+    def list_products(self, page=1, limit=100, nome=None):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        if nome:
+            params += f"&nome={nome}"
+        data = self._get("produtos", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    def get_product(self, id: str):
+        data = self._get(f"produtos/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def create_product(self, body: dict):
+        raw = self._post("produtos", body)
+        new_id = raw.get("data", {}).get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_product", "id": str(new_id), "raw": raw}
+
+    def update_product(self, id: str, body: dict):
+        raw = self._put(f"produtos/{id}", body)
+        return {"success": True, "action": "update_product", "id": id, "raw": raw}
+
+    def delete_product(self, id: str):
+        raw = self._delete(f"produtos/{id}")
+        return {"success": True, "action": "delete_product", "id": id, "raw": raw}
+
+    # ── Pedidos de Venda ────────────────────────────────────────────────────
+    def list_sales_orders(self, page=1, limit=100, from_date=None, to_date=None):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        if from_date:
+            params += f"&dataInicio={from_date}"
+        if to_date:
+            params += f"&dataFim={to_date}"
+        data = self._get("pedidos/vendas", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    def get_sales_order(self, id: str):
+        data = self._get(f"pedidos/vendas/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def create_sales_order(self, body: dict):
+        raw = self._post("pedidos/vendas", body)
+        new_id = raw.get("data", {}).get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_sales_order", "id": str(new_id), "raw": raw}
+
+    # ── NF-e ────────────────────────────────────────────────────────────────
+    def list_nfe(self, page=1, limit=100, from_date=None, to_date=None):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        if from_date:
+            params += f"&dataEmissaoInicio={from_date}"
+        if to_date:
+            params += f"&dataEmissaoFinal={to_date}"
+        data = self._get("nfe", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    def get_nfe(self, id: str):
+        data = self._get(f"nfe/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def create_nfe(self, body: dict):
+        raw = self._post("nfe", body)
+        new_id = raw.get("data", {}).get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_nfe", "id": str(new_id), "raw": raw}
+
+    def transmit_nfe(self, id: str):
+        raw = self._post(f"nfe/{id}/transmitir", {})
+        return {"success": True, "action": "transmit_nfe", "id": id, "raw": raw}
+
+    # ── NFC-e ───────────────────────────────────────────────────────────────
+    def list_nfce(self, page=1, limit=100):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        data = self._get("nfce", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    def get_nfce(self, id: str):
+        data = self._get(f"nfce/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    # ── Contatos (Clientes / Fornecedores) ──────────────────────────────────
+    def list_contacts(self, page=1, limit=100, nome=None, tipo=None):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        if nome:
+            params += f"&nome={nome}"
+        if tipo:
+            params += f"&tipo={tipo}"
+        data = self._get("contatos", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    def get_contact(self, id: str):
+        data = self._get(f"contatos/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def create_contact(self, body: dict):
+        raw = self._post("contatos", body)
+        new_id = raw.get("data", {}).get("id", "") if isinstance(raw, dict) else ""
+        return {"success": True, "action": "create_contact", "id": str(new_id), "raw": raw}
+
+    def update_contact(self, id: str, body: dict):
+        raw = self._put(f"contatos/{id}", body)
+        return {"success": True, "action": "update_contact", "id": id, "raw": raw}
+
+    # ── Estoque ─────────────────────────────────────────────────────────────
+    def get_stock(self, product_id: str):
+        data = self._get(f"estoques/saldos", f"idsProdutos[]={product_id}")
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return items[0] if items else {"product_id": product_id, "saldo": 0}
+
+    def adjust_stock(self, product_id: str, quantity: float, operation: str = "B", notes: str = ""):
+        """operation: B=Balanço, E=Entrada, S=Saída"""
+        body = {
+            "produto": {"id": int(product_id)},
+            "quantidade": quantity,
+            "operacao": operation,
+        }
+        if notes:
+            body["observacoes"] = notes
+        raw = self._post("estoques", body)
+        return {"success": True, "action": "adjust_stock", "product_id": product_id, "raw": raw}
+
+    # ── Categorias ──────────────────────────────────────────────────────────
+    def list_categories(self, page=1, limit=100):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        data = self._get("categorias/produtos", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    # ── Contas a pagar — extras ─────────────────────────────────────────────
+    def get_payable(self, id: str):
+        data = self._get(f"contas-pagar/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def delete_payable(self, id: str):
+        raw = self._delete(f"contas-pagar/{id}")
+        return {"success": True, "action": "delete_payable", "id": id, "raw": raw}
+
+    # ── Contas a receber — extras ───────────────────────────────────────────
+    def get_receivable(self, id: str):
+        data = self._get(f"contas-receber/{id}")
+        return data.get("data", data) if isinstance(data, dict) else data
+
+    def delete_receivable(self, id: str):
+        raw = self._delete(f"contas-receber/{id}")
+        return {"success": True, "action": "delete_receivable", "id": id, "raw": raw}
+
+    # ── Formas de Pagamento ─────────────────────────────────────────────────
+    def list_payment_methods(self, page=1, limit=100):
+        params = f"pagina={page}&limite={min(limit, 100)}"
+        data = self._get("formas-pagamentos", params)
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=page, total_count=len(items))
+
+    # ── Contas Correntes ────────────────────────────────────────────────────
+    def list_bank_accounts(self):
+        data = self._get("contas-correntes")
+        items = data.get("data", []) if isinstance(data, dict) else []
+        return make_list_response(items, page=1, total_count=len(items))
+
 
 if __name__ == "__main__":
     try:
