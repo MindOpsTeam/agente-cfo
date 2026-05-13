@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MCP server para HubSpot — 267 tools.
+MCP server para HubSpot — 463 tools.
 CRM completo: deals, contacts, companies, tickets, line_items, notes, calls,
 emails, meetings, tasks, pipelines, owners, properties, quotes, associations,
 products, forms, marketing emails, feedback, custom objects, communications,
@@ -1117,6 +1117,768 @@ async def list_tools() -> list[types.Tool]:
         _tool('hubspot_behavioral_event_send', 'Envia evento comportamental', {
             'body': {'type': 'object', 'description': 'Dados do evento (eventName, email/objectId, properties)'},
         }, ['body']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 1 — Marketing Workflows & Forms v3
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── Workflows Legacy v1 ──────────────────────────────────────────
+        _tool('hubspot_workflows_v1_list', 'Lista workflows legacy v1', {}),
+        _tool('hubspot_workflows_v1_get', 'Obtem workflow legacy v1', {
+            'workflowId': _ID('workflow'),
+        }, ['workflowId']),
+        _tool('hubspot_workflows_v1_create', 'Cria workflow legacy v1', {
+            'body': {'type': 'object', 'description': 'Definicao do workflow v1'},
+        }, ['body']),
+        _tool('hubspot_workflows_v1_update', 'Atualiza workflow legacy v1', {
+            'workflowId': _ID('workflow'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['workflowId', 'body']),
+        _tool('hubspot_workflows_v1_delete', 'Exclui workflow legacy v1', {
+            'workflowId': _ID('workflow'),
+        }, ['workflowId']),
+        _tool('hubspot_workflows_v1_enroll', 'Inscreve contato em workflow legacy v1', {
+            'workflowId': _ID('workflow'),
+            'email': {'type': 'string', 'description': 'Email do contato'},
+        }, ['workflowId', 'email']),
+        _tool('hubspot_workflows_v1_unenroll', 'Remove contato de workflow legacy v1', {
+            'workflowId': _ID('workflow'),
+            'email': {'type': 'string', 'description': 'Email do contato'},
+        }, ['workflowId', 'email']),
+        _tool('hubspot_workflows_v1_enrollments_list', 'Lista workflows em que um contato esta inscrito', {
+            'email': {'type': 'string', 'description': 'Email do contato'},
+        }, ['email']),
+
+        # ── Forms v3 ────────────────────────────────────────────────────
+        _tool('hubspot_forms_v3_list', 'Lista forms v3 do marketing', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_forms_v3_get', 'Obtem form v3 por ID', {
+            'formId': _ID('form'),
+        }, ['formId']),
+        _tool('hubspot_forms_v3_create', 'Cria form v3', {
+            'body': {'type': 'object', 'description': 'Definicao do form'},
+        }, ['body']),
+        _tool('hubspot_forms_v3_update', 'Atualiza form v3', {
+            'formId': _ID('form'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['formId', 'body']),
+        _tool('hubspot_forms_v3_archive', 'Arquiva form v3', {
+            'formId': _ID('form'),
+        }, ['formId']),
+        _tool('hubspot_forms_v3_submissions_list', 'Lista submissions de um form v3', {
+            'formId': _ID('form'),
+            'limit': _LIMIT,
+        }, ['formId']),
+        _tool('hubspot_forms_v3_submissions_get', 'Obtem submission especifica de form v3', {
+            'formId': _ID('form'),
+            'submissionId': _ID('submission'),
+        }, ['formId', 'submissionId']),
+        _tool('hubspot_forms_v3_fields_list', 'Lista campos de um form v3', {
+            'formId': _ID('form'),
+        }, ['formId']),
+        _tool('hubspot_forms_v3_field_create', 'Cria campo em form v3', {
+            'formId': _ID('form'),
+            'body': {'type': 'object', 'description': 'Definicao do campo'},
+        }, ['formId', 'body']),
+        _tool('hubspot_forms_v3_field_update', 'Atualiza campo de form v3', {
+            'formId': _ID('form'),
+            'fieldId': _ID('campo'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['formId', 'fieldId', 'body']),
+        _tool('hubspot_forms_v3_field_delete', 'Exclui campo de form v3', {
+            'formId': _ID('form'),
+            'fieldId': _ID('campo'),
+        }, ['formId', 'fieldId']),
+
+        # ── Email Marketing Stats ───────────────────────────────────────
+        _tool('hubspot_email_stats_summary', 'Resumo de estatisticas de email marketing', {}),
+        _tool('hubspot_email_stats_list', 'Lista estatisticas de emails marketing', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_email_stats_histogram', 'Histograma de estatisticas de um email', {
+            'emailId': _ID('email'),
+        }, ['emailId']),
+        _tool('hubspot_email_preview', 'Preview de um email marketing', {
+            'emailId': _ID('email'),
+        }, ['emailId']),
+
+        # ── Marketing Emails extras ─────────────────────────────────────
+        _tool('hubspot_marketing_email_create', 'Cria email marketing v3', {
+            'body': {'type': 'object', 'description': 'Definicao do email'},
+        }, ['body']),
+        _tool('hubspot_marketing_email_update', 'Atualiza email marketing v3', {
+            'emailId': _ID('email'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['emailId', 'body']),
+        _tool('hubspot_marketing_email_archive', 'Arquiva email marketing v3', {
+            'emailId': _ID('email'),
+        }, ['emailId']),
+        _tool('hubspot_marketing_email_clone', 'Clona email marketing v3', {
+            'emailId': _ID('email'),
+        }, ['emailId']),
+        _tool('hubspot_marketing_email_send_test', 'Envia email de teste', {
+            'emailId': _ID('email'),
+            'body': {'type': 'object', 'description': 'Dados do teste (emailAddress)'},
+        }, ['emailId', 'body']),
+        _tool('hubspot_marketing_email_schedule', 'Agenda envio de email marketing', {
+            'emailId': _ID('email'),
+            'body': {'type': 'object', 'description': 'Dados de agendamento (scheduledDate)'},
+        }, ['emailId', 'body']),
+        _tool('hubspot_marketing_email_unschedule', 'Cancela agendamento de email marketing', {
+            'emailId': _ID('email'),
+        }, ['emailId']),
+
+        # ── Lists v3 extras ─────────────────────────────────────────────
+        _tool('hubspot_lists_search', 'Busca listas por nome/tipo', {
+            'body': {'type': 'object', 'description': 'Criterios de busca (query, listType)'},
+        }, ['body']),
+        _tool('hubspot_list_memberships_count', 'Conta membros de uma lista', {
+            'id': _ID('lista'),
+        }, ['id']),
+        _tool('hubspot_lists_batch_read', 'Le listas em lote', {
+            'inputs': _BATCH_INPUTS_IDS,
+        }, ['inputs']),
+        _tool('hubspot_lists_batch_archive', 'Arquiva listas em lote', {
+            'inputs': _BATCH_INPUTS_IDS,
+        }, ['inputs']),
+        _tool('hubspot_lists_folders_list', 'Lista pastas de listas', {}),
+        _tool('hubspot_lists_folders_create', 'Cria pasta de listas', {
+            'body': {'type': 'object', 'description': 'Dados da pasta (name)'},
+        }, ['body']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 2 — Automation Sequences full
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── Sequences v4 extras ─────────────────────────────────────────
+        _tool('hubspot_sequences_create', 'Cria nova sequence de automacao', {
+            'body': {'type': 'object', 'description': 'Definicao da sequence'},
+        }, ['body']),
+        _tool('hubspot_sequences_update', 'Atualiza sequence de automacao', {
+            'sequenceId': _ID('sequence'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['sequenceId', 'body']),
+        _tool('hubspot_sequences_delete', 'Exclui sequence de automacao', {
+            'sequenceId': _ID('sequence'),
+        }, ['sequenceId']),
+        _tool('hubspot_sequences_steps_list', 'Lista steps de uma sequence', {
+            'sequenceId': _ID('sequence'),
+        }, ['sequenceId']),
+        _tool('hubspot_sequences_steps_create', 'Cria step em sequence', {
+            'sequenceId': _ID('sequence'),
+            'body': {'type': 'object', 'description': 'Definicao do step'},
+        }, ['sequenceId', 'body']),
+        _tool('hubspot_sequences_steps_update', 'Atualiza step de sequence', {
+            'sequenceId': _ID('sequence'),
+            'stepId': _ID('step'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['sequenceId', 'stepId', 'body']),
+        _tool('hubspot_sequences_steps_delete', 'Exclui step de sequence', {
+            'sequenceId': _ID('sequence'),
+            'stepId': _ID('step'),
+        }, ['sequenceId', 'stepId']),
+
+        # ── Sequence Enrollments v4 ─────────────────────────────────────
+        _tool('hubspot_sequence_enrollments_list', 'Lista enrollments de sequences', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_sequence_enrollment_get', 'Obtem enrollment de sequence', {
+            'enrollmentId': _ID('enrollment'),
+        }, ['enrollmentId']),
+        _tool('hubspot_sequence_enroll_contact', 'Inscreve contato em sequence v4', {
+            'sequenceId': _ID('sequence'),
+            'body': {'type': 'object', 'description': 'Dados de inscricao (contactId, sender, etc.)'},
+        }, ['sequenceId', 'body']),
+        _tool('hubspot_sequence_unenroll', 'Remove contato de sequence', {
+            'enrollmentId': _ID('enrollment'),
+        }, ['enrollmentId']),
+        _tool('hubspot_sequence_enrollment_pause', 'Pausa enrollment de sequence', {
+            'enrollmentId': _ID('enrollment'),
+        }, ['enrollmentId']),
+        _tool('hubspot_sequence_enrollment_resume', 'Retoma enrollment de sequence', {
+            'enrollmentId': _ID('enrollment'),
+        }, ['enrollmentId']),
+
+        # ── Custom Workflow Actions ─────────────────────────────────────
+        _tool('hubspot_workflow_actions_list', 'Lista custom actions de workflow de um app', {
+            'appId': _ID('app'),
+        }, ['appId']),
+        _tool('hubspot_workflow_actions_get', 'Obtem custom action de workflow', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+        }, ['appId', 'definitionId']),
+        _tool('hubspot_workflow_actions_create', 'Cria custom action de workflow', {
+            'appId': _ID('app'),
+            'body': {'type': 'object', 'description': 'Definicao da action'},
+        }, ['appId', 'body']),
+        _tool('hubspot_workflow_actions_update', 'Atualiza custom action de workflow', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['appId', 'definitionId', 'body']),
+        _tool('hubspot_workflow_actions_delete', 'Exclui custom action de workflow', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+        }, ['appId', 'definitionId']),
+        _tool('hubspot_workflow_actions_revisions_list', 'Lista revisoes de custom action', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+        }, ['appId', 'definitionId']),
+        _tool('hubspot_workflow_actions_functions_list', 'Lista functions de custom action', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+        }, ['appId', 'definitionId']),
+        _tool('hubspot_workflow_actions_function_get', 'Obtem function de custom action', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+            'functionType': {'type': 'string', 'description': 'Tipo da function'},
+        }, ['appId', 'definitionId', 'functionType']),
+        _tool('hubspot_workflow_actions_function_upsert', 'Cria/atualiza function de custom action', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+            'functionType': {'type': 'string', 'description': 'Tipo da function'},
+            'body': {'type': 'object', 'description': 'Definicao da function'},
+        }, ['appId', 'definitionId', 'functionType', 'body']),
+        _tool('hubspot_workflow_actions_function_delete', 'Exclui function de custom action', {
+            'appId': _ID('app'),
+            'definitionId': _ID('definition'),
+            'functionType': {'type': 'string', 'description': 'Tipo da function'},
+        }, ['appId', 'definitionId', 'functionType']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 3 — CMS Source Code + Templates
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── Source Code Files ───────────────────────────────────────────
+        _tool('hubspot_cms_source_list', 'Lista arquivos source code do CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente (draft, published)', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho raiz', 'default': '/'},
+        }),
+        _tool('hubspot_cms_source_get', 'Obtem conteudo de arquivo source code CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente (draft, published)', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho do arquivo'},
+        }, ['path']),
+        _tool('hubspot_cms_source_create', 'Cria arquivo source code no CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho do arquivo'},
+            'body': {'type': 'string', 'description': 'Conteudo do arquivo'},
+        }, ['path', 'body']),
+        _tool('hubspot_cms_source_update', 'Atualiza arquivo source code no CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho do arquivo'},
+            'body': {'type': 'string', 'description': 'Novo conteudo'},
+        }, ['path', 'body']),
+        _tool('hubspot_cms_source_delete', 'Exclui arquivo source code do CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho do arquivo'},
+        }, ['path']),
+        _tool('hubspot_cms_source_metadata', 'Obtem metadata de arquivo source code CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho do arquivo'},
+        }, ['path']),
+        _tool('hubspot_cms_source_validate', 'Valida arquivo source code CMS', {
+            'environment': {'type': 'string', 'description': 'Ambiente', 'default': 'draft'},
+            'path': {'type': 'string', 'description': 'Caminho do arquivo'},
+        }, ['path']),
+
+        # ── Templates (Design Manager) ──────────────────────────────────
+        _tool('hubspot_cms_templates_list', 'Lista templates do CMS (design manager)', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_cms_template_get', 'Obtem template do CMS', {
+            'template_id': _ID('template'),
+        }, ['template_id']),
+        _tool('hubspot_cms_template_create', 'Cria template no CMS', {
+            'body': {'type': 'object', 'description': 'Definicao do template'},
+        }, ['body']),
+        _tool('hubspot_cms_template_update', 'Atualiza template do CMS', {
+            'template_id': _ID('template'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['template_id', 'body']),
+        _tool('hubspot_cms_template_delete', 'Exclui template do CMS', {
+            'template_id': _ID('template'),
+        }, ['template_id']),
+
+        # ── Themes ──────────────────────────────────────────────────────
+        _tool('hubspot_cms_themes_list', 'Lista temas do CMS', {}),
+        _tool('hubspot_cms_theme_get', 'Obtem tema do CMS', {
+            'themeId': _ID('tema'),
+        }, ['themeId']),
+        _tool('hubspot_cms_theme_settings_get', 'Obtem configuracoes de tema', {
+            'themeId': _ID('tema'),
+        }, ['themeId']),
+        _tool('hubspot_cms_theme_settings_update', 'Atualiza configuracoes de tema', {
+            'themeId': _ID('tema'),
+            'body': {'type': 'object', 'description': 'Settings a atualizar'},
+        }, ['themeId', 'body']),
+        _tool('hubspot_cms_theme_fields_list', 'Lista campos de tema', {
+            'themeId': _ID('tema'),
+        }, ['themeId']),
+
+        # ── Site Search ─────────────────────────────────────────────────
+        _tool('hubspot_cms_site_search', 'Busca no site via CMS', {
+            'q': {'type': 'string', 'description': 'Termo de busca'},
+            'type': {'type': 'string', 'description': 'Tipo (LANDING_PAGE, BLOG_POST, SITE_PAGE, etc.)'},
+            'limit': _LIMIT,
+        }, ['q']),
+        _tool('hubspot_cms_site_search_index_status', 'Status de indexacao de conteudo', {
+            'contentId': _ID('conteudo'),
+        }, ['contentId']),
+
+        # ── Blog Authors ────────────────────────────────────────────────
+        _tool('hubspot_cms_blog_authors_list', 'Lista autores do blog CMS', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_cms_blog_author_get', 'Obtem autor do blog', {
+            'authorId': _ID('autor'),
+        }, ['authorId']),
+        _tool('hubspot_cms_blog_author_create', 'Cria autor de blog', {
+            'body': {'type': 'object', 'description': 'Dados do autor'},
+        }, ['body']),
+        _tool('hubspot_cms_blog_author_update', 'Atualiza autor de blog', {
+            'authorId': _ID('autor'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['authorId', 'body']),
+        _tool('hubspot_cms_blog_author_delete', 'Exclui autor de blog', {
+            'authorId': _ID('autor'),
+        }, ['authorId']),
+
+        # ── Blog Tags ───────────────────────────────────────────────────
+        _tool('hubspot_cms_blog_tags_list', 'Lista tags do blog CMS', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_cms_blog_tag_get', 'Obtem tag do blog', {
+            'tagId': _ID('tag'),
+        }, ['tagId']),
+        _tool('hubspot_cms_blog_tag_create', 'Cria tag de blog', {
+            'body': {'type': 'object', 'description': 'Dados da tag'},
+        }, ['body']),
+        _tool('hubspot_cms_blog_tag_update', 'Atualiza tag de blog', {
+            'tagId': _ID('tag'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['tagId', 'body']),
+        _tool('hubspot_cms_blog_tag_delete', 'Exclui tag de blog', {
+            'tagId': _ID('tag'),
+        }, ['tagId']),
+
+        # ── Crawling/Audit ──────────────────────────────────────────────
+        _tool('hubspot_cms_audit_logs_list', 'Lista audit logs do CMS', {
+            'limit': _LIMIT,
+            'objectType': {'type': 'string', 'description': 'Tipo de objeto para filtrar'},
+        }),
+        _tool('hubspot_cms_content_audit', 'Auditoria de conteudo CMS', {}),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 4 — Analytics & Custom Behavioral Events
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── Event Definitions ───────────────────────────────────────────
+        _tool('hubspot_events_definitions_list', 'Lista definicoes de eventos custom', {}),
+        _tool('hubspot_events_definition_get', 'Obtem definicao de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+        }, ['eventName']),
+        _tool('hubspot_events_definition_create', 'Cria definicao de evento custom', {
+            'body': {'type': 'object', 'description': 'Definicao do evento'},
+        }, ['body']),
+        _tool('hubspot_events_definition_update', 'Atualiza definicao de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['eventName', 'body']),
+        _tool('hubspot_events_definition_delete', 'Exclui definicao de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+        }, ['eventName']),
+        _tool('hubspot_events_definition_properties_list', 'Lista propriedades de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+        }, ['eventName']),
+        _tool('hubspot_events_definition_property_create', 'Cria propriedade de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+            'body': {'type': 'object', 'description': 'Definicao da propriedade'},
+        }, ['eventName', 'body']),
+        _tool('hubspot_events_definition_property_update', 'Atualiza propriedade de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+            'propertyName': {'type': 'string', 'description': 'Nome da propriedade'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['eventName', 'propertyName', 'body']),
+        _tool('hubspot_events_definition_property_delete', 'Exclui propriedade de evento custom', {
+            'eventName': {'type': 'string', 'description': 'Nome do evento'},
+            'propertyName': {'type': 'string', 'description': 'Nome da propriedade'},
+        }, ['eventName', 'propertyName']),
+
+        # ── Fire behavioral events ──────────────────────────────────────
+        _tool('hubspot_events_send_v3', 'Envia evento comportamental v3', {
+            'body': {'type': 'object', 'description': 'Dados do evento (eventName, objectId, properties)'},
+        }, ['body']),
+
+        # ── Analytics Reporting ─────────────────────────────────────────
+        _tool('hubspot_analytics_reports_list', 'Lista reports de analytics', {}),
+        _tool('hubspot_analytics_events_list', 'Lista eventos de analytics por objeto', {
+            'objectType': {'type': 'string', 'description': 'Tipo de objeto (contacts, companies, etc.)'},
+            'objectId': _ID('objeto'),
+        }, ['objectType', 'objectId']),
+        _tool('hubspot_analytics_web_analytics', 'Obtem web analytics por periodo', {
+            'start': {'type': 'string', 'description': 'Data inicio (YYYY-MM-DD)'},
+            'end': {'type': 'string', 'description': 'Data fim (YYYY-MM-DD)'},
+        }, ['start', 'end']),
+        _tool('hubspot_analytics_contact_events', 'Lista eventos de um contato', {
+            'contactId': _ID('contato'),
+        }, ['contactId']),
+
+        # ── Goals ───────────────────────────────────────────────────────
+        _tool('hubspot_goals_list', 'Lista metas/goals do CRM', {}),
+        _tool('hubspot_goal_get', 'Obtem meta/goal por ID', {
+            'goalTargetId': _ID('goal'),
+        }, ['goalTargetId']),
+        _tool('hubspot_goal_create', 'Cria meta/goal no CRM', {
+            'body': {'type': 'object', 'description': 'Definicao da meta'},
+        }, ['body']),
+        _tool('hubspot_goal_update', 'Atualiza meta/goal', {
+            'goalTargetId': _ID('goal'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['goalTargetId', 'body']),
+        _tool('hubspot_goal_delete', 'Exclui meta/goal', {
+            'goalTargetId': _ID('goal'),
+        }, ['goalTargetId']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 5 — OAuth & App Info
+        # ══════════════════════════════════════════════════════════════════
+
+        _tool('hubspot_oauth_token_info', 'Obtem informacoes de um access token OAuth', {
+            'token': {'type': 'string', 'description': 'Access token'},
+        }, ['token']),
+        _tool('hubspot_oauth_refresh', 'Renova access token via refresh token', {
+            'refresh_token': {'type': 'string', 'description': 'Refresh token'},
+            'client_id': {'type': 'string', 'description': 'Client ID do app'},
+            'client_secret': {'type': 'string', 'description': 'Client secret do app'},
+        }, ['refresh_token', 'client_id', 'client_secret']),
+        _tool('hubspot_oauth_revoke', 'Revoga refresh token', {
+            'token': {'type': 'string', 'description': 'Refresh token a revogar'},
+        }, ['token']),
+        _tool('hubspot_app_info_get', 'Obtem info da conta via private app token', {}),
+        _tool('hubspot_integrations_installed_apps', 'Lista apps instalados na conta', {}),
+
+        # ── Webhooks Subscriptions v3 ───────────────────────────────────
+        _tool('hubspot_webhooks_app_settings_get', 'Obtem settings de webhooks do app', {
+            'appId': _ID('app'),
+        }, ['appId']),
+        _tool('hubspot_webhooks_app_settings_update', 'Atualiza settings de webhooks do app', {
+            'appId': _ID('app'),
+            'body': {'type': 'object', 'description': 'Settings a atualizar (targetUrl, throttling)'},
+        }, ['appId', 'body']),
+        _tool('hubspot_webhooks_subscriptions_list', 'Lista subscriptions de webhooks do app', {
+            'appId': _ID('app'),
+        }, ['appId']),
+        _tool('hubspot_webhooks_subscription_get', 'Obtem subscription de webhook', {
+            'appId': _ID('app'),
+            'subscriptionId': _ID('subscription'),
+        }, ['appId', 'subscriptionId']),
+        _tool('hubspot_webhooks_subscription_create', 'Cria subscription de webhook', {
+            'appId': _ID('app'),
+            'body': {'type': 'object', 'description': 'Definicao da subscription'},
+        }, ['appId', 'body']),
+        _tool('hubspot_webhooks_subscription_update', 'Atualiza subscription de webhook', {
+            'appId': _ID('app'),
+            'subscriptionId': _ID('subscription'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['appId', 'subscriptionId', 'body']),
+        _tool('hubspot_webhooks_subscription_delete', 'Exclui subscription de webhook', {
+            'appId': _ID('app'),
+            'subscriptionId': _ID('subscription'),
+        }, ['appId', 'subscriptionId']),
+        _tool('hubspot_webhooks_subscriptions_batch_update', 'Atualiza subscriptions de webhook em lote', {
+            'appId': _ID('app'),
+            'inputs': _BATCH_INPUTS,
+        }, ['appId', 'inputs']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 6 — Settings (Users/Permissions/Roles full)
+        # ══════════════════════════════════════════════════════════════════
+
+        _tool('hubspot_settings_users_batch_create', 'Cria usuarios em lote', {
+            'inputs': _BATCH_INPUTS,
+        }, ['inputs']),
+        _tool('hubspot_settings_users_batch_update', 'Atualiza usuarios em lote', {
+            'inputs': _BATCH_INPUTS,
+        }, ['inputs']),
+        _tool('hubspot_settings_user_roles_list', 'Lista roles de um usuario', {
+            'userId': _ID('usuario'),
+        }, ['userId']),
+        _tool('hubspot_settings_user_teams_list', 'Lista teams de um usuario', {
+            'userId': _ID('usuario'),
+        }, ['userId']),
+
+        # ── Permission Sets ─────────────────────────────────────────────
+        _tool('hubspot_permission_sets_list', 'Lista permission sets/roles do portal', {}),
+        _tool('hubspot_permission_set_get', 'Obtem permission set/role por ID', {
+            'roleId': _ID('role'),
+        }, ['roleId']),
+        _tool('hubspot_permission_set_create', 'Cria permission set/role', {
+            'body': {'type': 'object', 'description': 'Definicao do role'},
+        }, ['body']),
+        _tool('hubspot_permission_set_delete', 'Exclui permission set/role', {
+            'roleId': _ID('role'),
+        }, ['roleId']),
+
+        # ── Account Info ────────────────────────────────────────────────
+        _tool('hubspot_account_info_get', 'Obtem detalhes da conta HubSpot', {}),
+        _tool('hubspot_account_info_api_usage', 'Obtem uso diario da API', {}),
+        _tool('hubspot_account_info_api_limits', 'Obtem limites mensais da API', {}),
+
+        # ── Account Activity ────────────────────────────────────────────
+        _tool('hubspot_account_activity_login_list', 'Lista atividade de login', {}),
+        _tool('hubspot_account_activity_security_list', 'Lista atividade de seguranca', {}),
+
+        # ── CRM Property Options extras ─────────────────────────────────
+        _tool('hubspot_property_options_list', 'Lista opcoes de uma propriedade', {
+            'objectType': _OBJ_TYPE,
+            'propertyName': {'type': 'string', 'description': 'Nome da propriedade'},
+        }, ['objectType', 'propertyName']),
+        _tool('hubspot_property_options_create', 'Cria opcao em propriedade', {
+            'objectType': _OBJ_TYPE,
+            'propertyName': {'type': 'string', 'description': 'Nome da propriedade'},
+            'body': {'type': 'object', 'description': 'Dados da opcao (label, value)'},
+        }, ['objectType', 'propertyName', 'body']),
+        _tool('hubspot_property_options_update', 'Atualiza opcao de propriedade', {
+            'objectType': _OBJ_TYPE,
+            'propertyName': {'type': 'string', 'description': 'Nome da propriedade'},
+            'optionId': _ID('opcao'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['objectType', 'propertyName', 'optionId', 'body']),
+        _tool('hubspot_property_options_delete', 'Exclui opcao de propriedade', {
+            'objectType': _OBJ_TYPE,
+            'propertyName': {'type': 'string', 'description': 'Nome da propriedade'},
+            'optionId': _ID('opcao'),
+        }, ['objectType', 'propertyName', 'optionId']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 7 — Service Hub / Knowledge Base
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── Knowledge Base Articles ─────────────────────────────────────
+        _tool('hubspot_kb_articles_list', 'Lista artigos da knowledge base', {
+            'limit': _LIMIT,
+        }),
+        _tool('hubspot_kb_article_get', 'Obtem artigo da knowledge base', {
+            'articleId': _ID('artigo'),
+        }, ['articleId']),
+        _tool('hubspot_kb_article_create', 'Cria artigo na knowledge base', {
+            'body': {'type': 'object', 'description': 'Dados do artigo'},
+        }, ['body']),
+        _tool('hubspot_kb_article_update', 'Atualiza artigo da knowledge base', {
+            'articleId': _ID('artigo'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['articleId', 'body']),
+        _tool('hubspot_kb_article_delete', 'Exclui artigo da knowledge base', {
+            'articleId': _ID('artigo'),
+        }, ['articleId']),
+        _tool('hubspot_kb_article_publish', 'Publica artigo da knowledge base', {
+            'articleId': _ID('artigo'),
+        }, ['articleId']),
+        _tool('hubspot_kb_article_clone', 'Clona artigo da knowledge base', {
+            'articleId': _ID('artigo'),
+        }, ['articleId']),
+        _tool('hubspot_kb_articles_batch_archive', 'Arquiva artigos em lote', {
+            'inputs': _BATCH_INPUTS_IDS,
+        }, ['inputs']),
+
+        # ── Knowledge Base Categories ───────────────────────────────────
+        _tool('hubspot_kb_categories_list', 'Lista categorias da knowledge base', {}),
+        _tool('hubspot_kb_category_get', 'Obtem categoria da knowledge base', {
+            'categoryId': _ID('categoria'),
+        }, ['categoryId']),
+        _tool('hubspot_kb_category_create', 'Cria categoria na knowledge base', {
+            'body': {'type': 'object', 'description': 'Dados da categoria'},
+        }, ['body']),
+        _tool('hubspot_kb_category_update', 'Atualiza categoria da knowledge base', {
+            'categoryId': _ID('categoria'),
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['categoryId', 'body']),
+        _tool('hubspot_kb_category_delete', 'Exclui categoria da knowledge base', {
+            'categoryId': _ID('categoria'),
+        }, ['categoryId']),
+
+        # ── Feedback Surveys ────────────────────────────────────────────
+        _tool('hubspot_feedback_surveys_list', 'Lista dashboards de feedback/NPS', {}),
+        _tool('hubspot_feedback_survey_responses', 'Lista respostas de feedback survey', {
+            'startDate': {'type': 'string', 'description': 'Data inicio (YYYY-MM-DD)'},
+            'endDate': {'type': 'string', 'description': 'Data fim (YYYY-MM-DD)'},
+        }, ['startDate', 'endDate']),
+
+        # ── Conversations Custom Channels ───────────────────────────────
+        _tool('hubspot_conv_custom_channels_list', 'Lista custom channels de conversacao', {}),
+        _tool('hubspot_conv_custom_channel_create', 'Cria custom channel de conversacao', {
+            'body': {'type': 'object', 'description': 'Dados do channel'},
+        }, ['body']),
+        _tool('hubspot_conv_custom_channel_get', 'Obtem custom channel de conversacao', {
+            'channelId': _ID('channel'),
+        }, ['channelId']),
+        _tool('hubspot_conv_custom_channel_delete', 'Exclui custom channel de conversacao', {
+            'channelId': _ID('channel'),
+        }, ['channelId']),
+        _tool('hubspot_conv_channel_account_create', 'Cria channel account em custom channel', {
+            'channelId': _ID('channel'),
+            'body': {'type': 'object', 'description': 'Dados da channel account'},
+        }, ['channelId', 'body']),
+
+        # ══════════════════════════════════════════════════════════════════
+        # HUB 8 — CRM extras finais
+        # ══════════════════════════════════════════════════════════════════
+
+        # ── Products extras ─────────────────────────────────────────────
+        _tool('hubspot_products_search', 'Busca products no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+        _tool('hubspot_products_batch_create', 'Cria products em lote', {
+            'inputs': _BATCH_INPUTS,
+        }, ['inputs']),
+        _tool('hubspot_products_batch_update', 'Atualiza products em lote', {
+            'inputs': _BATCH_INPUTS,
+        }, ['inputs']),
+        _tool('hubspot_products_batch_archive', 'Arquiva products em lote', {
+            'inputs': _BATCH_INPUTS_IDS,
+        }, ['inputs']),
+        _tool('hubspot_products_batch_read', 'Le products em lote', {
+            'inputs': _BATCH_INPUTS_IDS,
+        }, ['inputs']),
+
+        # ── Quotes extras ──────────────────────────────────────────────
+        _tool('hubspot_quotes_search', 'Busca quotes no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+        _tool('hubspot_quotes_associations_list', 'Lista associacoes de um quote', {
+            'quoteId': _ID('quote'),
+            'toObjectType': _TO_TYPE,
+        }, ['quoteId', 'toObjectType']),
+        _tool('hubspot_quotes_associations_create', 'Cria associacao de quote', {
+            'quoteId': _ID('quote'),
+            'toObjectType': _TO_TYPE,
+            'toObjectId': _ID('objeto destino'),
+            'associationTypeId': {'type': 'string', 'description': 'ID do tipo de associacao'},
+        }, ['quoteId', 'toObjectType', 'toObjectId', 'associationTypeId']),
+        _tool('hubspot_quote_approve', 'Aprova um quote (muda status p/ APPROVED)', {
+            'quoteId': _ID('quote'),
+        }, ['quoteId']),
+
+        # ── Line Items extras ──────────────────────────────────────────
+        _tool('hubspot_lineitems_search', 'Busca line items no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+        _tool('hubspot_lineitems_associations', 'Lista associacoes de um line item', {
+            'lineItemId': _ID('line item'),
+            'toObjectType': _TO_TYPE,
+        }, ['lineItemId', 'toObjectType']),
+
+        # ── Postal Mail extras ─────────────────────────────────────────
+        _tool('hubspot_postal_mail_create', 'Cria postal mail no CRM', {
+            'properties': _PROPS_DICT,
+        }, ['properties']),
+        _tool('hubspot_postal_mail_update', 'Atualiza postal mail', {
+            'postalMailId': _ID('postal mail'),
+            'properties': _PROPS_DICT,
+        }, ['postalMailId', 'properties']),
+        _tool('hubspot_postal_mail_delete', 'Exclui postal mail', {
+            'postalMailId': _ID('postal mail'),
+        }, ['postalMailId']),
+
+        # ── Calls extras ───────────────────────────────────────────────
+        _tool('hubspot_calls_update', 'Atualiza call no CRM', {
+            'callId': _ID('call'),
+            'properties': _PROPS_DICT,
+        }, ['callId', 'properties']),
+        _tool('hubspot_calls_delete', 'Exclui call no CRM', {
+            'callId': _ID('call'),
+        }, ['callId']),
+        _tool('hubspot_calls_search', 'Busca calls no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+
+        # ── Emails extras ──────────────────────────────────────────────
+        _tool('hubspot_emails_create', 'Cria email engagement no CRM', {
+            'properties': _PROPS_DICT,
+        }, ['properties']),
+        _tool('hubspot_emails_update', 'Atualiza email engagement', {
+            'emailId': _ID('email'),
+            'properties': _PROPS_DICT,
+        }, ['emailId', 'properties']),
+        _tool('hubspot_emails_delete', 'Exclui email engagement', {
+            'emailId': _ID('email'),
+        }, ['emailId']),
+        _tool('hubspot_emails_search', 'Busca emails engagement no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+
+        # ── Meetings extras ────────────────────────────────────────────
+        _tool('hubspot_meetings_create', 'Cria meeting no CRM', {
+            'properties': _PROPS_DICT,
+        }, ['properties']),
+        _tool('hubspot_meetings_update', 'Atualiza meeting no CRM', {
+            'meetingId': _ID('meeting'),
+            'properties': _PROPS_DICT,
+        }, ['meetingId', 'properties']),
+        _tool('hubspot_meetings_delete', 'Exclui meeting no CRM', {
+            'meetingId': _ID('meeting'),
+        }, ['meetingId']),
+        _tool('hubspot_meetings_search', 'Busca meetings no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+
+        # ── Notes extras ───────────────────────────────────────────────
+        _tool('hubspot_notes_update', 'Atualiza note no CRM', {
+            'noteId': _ID('note'),
+            'properties': _PROPS_DICT,
+        }, ['noteId', 'properties']),
+        _tool('hubspot_notes_delete', 'Exclui note no CRM', {
+            'noteId': _ID('note'),
+        }, ['noteId']),
+        _tool('hubspot_notes_search', 'Busca notes no CRM', {
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['query']),
+
+        # ── Custom Objects extras ──────────────────────────────────────
+        _tool('hubspot_custom_objects_update', 'Atualiza custom object', {
+            'objectType': _OBJ_TYPE,
+            'objectId': _ID('objeto'),
+            'properties': _PROPS_DICT,
+        }, ['objectType', 'objectId', 'properties']),
+        _tool('hubspot_custom_objects_delete', 'Exclui custom object', {
+            'objectType': _OBJ_TYPE,
+            'objectId': _ID('objeto'),
+        }, ['objectType', 'objectId']),
+        _tool('hubspot_custom_objects_search', 'Busca custom objects', {
+            'objectType': _OBJ_TYPE,
+            'query': {'type': 'string', 'description': 'Termo de busca'},
+            'limit': _LIMIT,
+        }, ['objectType', 'query']),
+        _tool('hubspot_custom_objects_batch_create', 'Cria custom objects em lote', {
+            'objectType': _OBJ_TYPE,
+            'inputs': _BATCH_INPUTS,
+        }, ['objectType', 'inputs']),
+        _tool('hubspot_custom_objects_batch_update', 'Atualiza custom objects em lote', {
+            'objectType': _OBJ_TYPE,
+            'inputs': _BATCH_INPUTS,
+        }, ['objectType', 'inputs']),
+        _tool('hubspot_custom_objects_schema_create', 'Cria schema de custom object', {
+            'body': {'type': 'object', 'description': 'Definicao do schema'},
+        }, ['body']),
+        _tool('hubspot_custom_objects_schema_update', 'Atualiza schema de custom object', {
+            'objectType': _OBJ_TYPE,
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['objectType', 'body']),
+        _tool('hubspot_custom_objects_schema_delete', 'Exclui schema de custom object', {
+            'objectType': _OBJ_TYPE,
+        }, ['objectType']),
+        _tool('hubspot_custom_objects_schema_labels', 'Atualiza labels de schema custom object', {
+            'objectType': _OBJ_TYPE,
+            'body': {'type': 'object', 'description': 'Labels a atualizar'},
+        }, ['objectType', 'body']),
     ]
 
 
@@ -1835,6 +2597,526 @@ def _dispatch(name: str, args: dict):
             return c._get("events/v3/event-definitions")
         case 'hubspot_behavioral_event_send':
             return c._post_json("events/v3/send", args.get('body', {}))
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 1 — Marketing Workflows & Forms v3
+        # ══════════════════════════════════════════════════════════════
+
+        # ── Workflows Legacy v1 ──────────────────────────────────────
+        case 'hubspot_workflows_v1_list':
+            return c._get("automation/v1/workflows")
+        case 'hubspot_workflows_v1_get':
+            return c._get(f"automation/v1/workflows/{args['workflowId']}")
+        case 'hubspot_workflows_v1_create':
+            return c._post_json("automation/v1/workflows", args.get('body', {}))
+        case 'hubspot_workflows_v1_update':
+            return c._put(f"automation/v1/workflows/{args['workflowId']}", args.get('body', {}))
+        case 'hubspot_workflows_v1_delete':
+            return _del(c, f"automation/v1/workflows/{args['workflowId']}")
+        case 'hubspot_workflows_v1_enroll':
+            return c._post_json(f"automation/v1/workflows/{args['workflowId']}/enrollments/contacts/{args['email']}", {})
+        case 'hubspot_workflows_v1_unenroll':
+            return _del(c, f"automation/v1/workflows/{args['workflowId']}/enrollments/contacts/{args['email']}")
+        case 'hubspot_workflows_v1_enrollments_list':
+            return c._get(f"automation/v1/workflows/enrollments/contacts/{args['email']}")
+
+        # ── Forms v3 ────────────────────────────────────────────────
+        case 'hubspot_forms_v3_list':
+            return c._get(f"marketing/v3/forms?limit={args.get('limit', 50)}")
+        case 'hubspot_forms_v3_get':
+            return c._get(f"marketing/v3/forms/{args['formId']}")
+        case 'hubspot_forms_v3_create':
+            return c._post_json("marketing/v3/forms", args.get('body', {}))
+        case 'hubspot_forms_v3_update':
+            return c._patch(f"marketing/v3/forms/{args['formId']}", args.get('body', {}))
+        case 'hubspot_forms_v3_archive':
+            return c._post_json(f"marketing/v3/forms/{args['formId']}/archive", {})
+        case 'hubspot_forms_v3_submissions_list':
+            return c._get(f"marketing/v3/forms/{args['formId']}/submissions?limit={args.get('limit', 50)}")
+        case 'hubspot_forms_v3_submissions_get':
+            return c._get(f"marketing/v3/forms/{args['formId']}/submissions/{args['submissionId']}")
+        case 'hubspot_forms_v3_fields_list':
+            return c._get(f"marketing/v3/forms/{args['formId']}/fields")
+        case 'hubspot_forms_v3_field_create':
+            return c._post_json(f"marketing/v3/forms/{args['formId']}/fields", args.get('body', {}))
+        case 'hubspot_forms_v3_field_update':
+            return c._patch(f"marketing/v3/forms/{args['formId']}/fields/{args['fieldId']}", args.get('body', {}))
+        case 'hubspot_forms_v3_field_delete':
+            return _del(c, f"marketing/v3/forms/{args['formId']}/fields/{args['fieldId']}")
+
+        # ── Email Marketing Stats ───────────────────────────────────
+        case 'hubspot_email_stats_summary':
+            return c._get("marketing/v3/emails/statistics/summary")
+        case 'hubspot_email_stats_list':
+            return c._get(f"marketing/v3/emails/statistics/list?limit={args.get('limit', 50)}")
+        case 'hubspot_email_stats_histogram':
+            return c._get(f"marketing/v3/emails/{args['emailId']}/statistics/histogram")
+        case 'hubspot_email_preview':
+            return c._get(f"marketing/v3/emails/{args['emailId']}/preview")
+
+        # ── Marketing Emails extras ─────────────────────────────────
+        case 'hubspot_marketing_email_create':
+            return c._post_json("marketing/v3/emails", args.get('body', {}))
+        case 'hubspot_marketing_email_update':
+            return c._patch(f"marketing/v3/emails/{args['emailId']}", args.get('body', {}))
+        case 'hubspot_marketing_email_archive':
+            return _del(c, f"marketing/v3/emails/{args['emailId']}")
+        case 'hubspot_marketing_email_clone':
+            return c._post_json("marketing/v3/emails/clone", {"id": args['emailId']})
+        case 'hubspot_marketing_email_send_test':
+            return c._post_json(f"marketing/v3/emails/{args['emailId']}/send-test", args.get('body', {}))
+        case 'hubspot_marketing_email_schedule':
+            return c._post_json(f"marketing/v3/emails/{args['emailId']}/schedule", args.get('body', {}))
+        case 'hubspot_marketing_email_unschedule':
+            return _del(c, f"marketing/v3/emails/{args['emailId']}/schedule")
+
+        # ── Lists v3 extras ─────────────────────────────────────────
+        case 'hubspot_lists_search':
+            return c._post_json("crm/v3/lists/search", args.get('body', {}))
+        case 'hubspot_list_memberships_count':
+            return c._get(f"crm/v3/lists/{args['id']}/memberships/count")
+        case 'hubspot_lists_batch_read':
+            return c._post_json("crm/v3/lists/batch/read", {"inputs": args['inputs']})
+        case 'hubspot_lists_batch_archive':
+            return c._post_json("crm/v3/lists/batch/archive", {"inputs": args['inputs']})
+        case 'hubspot_lists_folders_list':
+            return c._get("crm/v3/lists/folders")
+        case 'hubspot_lists_folders_create':
+            return c._post_json("crm/v3/lists/folders", args.get('body', {}))
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 2 — Automation Sequences full
+        # ══════════════════════════════════════════════════════════════
+
+        # ── Sequences v4 extras ─────────────────────────────────────
+        case 'hubspot_sequences_create':
+            return c._post_json("automation/v4/sequences", args.get('body', {}))
+        case 'hubspot_sequences_update':
+            return c._patch(f"automation/v4/sequences/{args['sequenceId']}", args.get('body', {}))
+        case 'hubspot_sequences_delete':
+            return _del(c, f"automation/v4/sequences/{args['sequenceId']}")
+        case 'hubspot_sequences_steps_list':
+            return c._get(f"automation/v4/sequences/{args['sequenceId']}/steps")
+        case 'hubspot_sequences_steps_create':
+            return c._post_json(f"automation/v4/sequences/{args['sequenceId']}/steps", args.get('body', {}))
+        case 'hubspot_sequences_steps_update':
+            return c._patch(f"automation/v4/sequences/{args['sequenceId']}/steps/{args['stepId']}", args.get('body', {}))
+        case 'hubspot_sequences_steps_delete':
+            return _del(c, f"automation/v4/sequences/{args['sequenceId']}/steps/{args['stepId']}")
+
+        # ── Sequence Enrollments v4 ─────────────────────────────────
+        case 'hubspot_sequence_enrollments_list':
+            return c._get(f"automation/v4/sequences/enrollments?limit={args.get('limit', 50)}")
+        case 'hubspot_sequence_enrollment_get':
+            return c._get(f"automation/v4/sequences/enrollments/{args['enrollmentId']}")
+        case 'hubspot_sequence_enroll_contact':
+            return c._post_json(f"automation/v4/sequences/{args['sequenceId']}/enrollments", args.get('body', {}))
+        case 'hubspot_sequence_unenroll':
+            return _del(c, f"automation/v4/sequences/enrollments/{args['enrollmentId']}")
+        case 'hubspot_sequence_enrollment_pause':
+            return c._post_json(f"automation/v4/sequences/enrollments/{args['enrollmentId']}/pause", {})
+        case 'hubspot_sequence_enrollment_resume':
+            return c._post_json(f"automation/v4/sequences/enrollments/{args['enrollmentId']}/resume", {})
+
+        # ── Custom Workflow Actions ─────────────────────────────────
+        case 'hubspot_workflow_actions_list':
+            return c._get(f"automation/v4/actions/{args['appId']}")
+        case 'hubspot_workflow_actions_get':
+            return c._get(f"automation/v4/actions/{args['appId']}/{args['definitionId']}")
+        case 'hubspot_workflow_actions_create':
+            return c._post_json(f"automation/v4/actions/{args['appId']}", args.get('body', {}))
+        case 'hubspot_workflow_actions_update':
+            return c._patch(f"automation/v4/actions/{args['appId']}/{args['definitionId']}", args.get('body', {}))
+        case 'hubspot_workflow_actions_delete':
+            return _del(c, f"automation/v4/actions/{args['appId']}/{args['definitionId']}")
+        case 'hubspot_workflow_actions_revisions_list':
+            return c._get(f"automation/v4/actions/{args['appId']}/{args['definitionId']}/revisions")
+        case 'hubspot_workflow_actions_functions_list':
+            return c._get(f"automation/v4/actions/{args['appId']}/{args['definitionId']}/functions")
+        case 'hubspot_workflow_actions_function_get':
+            return c._get(f"automation/v4/actions/{args['appId']}/{args['definitionId']}/functions/{args['functionType']}")
+        case 'hubspot_workflow_actions_function_upsert':
+            return c._put(f"automation/v4/actions/{args['appId']}/{args['definitionId']}/functions/{args['functionType']}", args.get('body', {}))
+        case 'hubspot_workflow_actions_function_delete':
+            return _del(c, f"automation/v4/actions/{args['appId']}/{args['definitionId']}/functions/{args['functionType']}")
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 3 — CMS Source Code + Templates
+        # ══════════════════════════════════════════════════════════════
+
+        # ── Source Code Files ───────────────────────────────────────
+        case 'hubspot_cms_source_list':
+            env = args.get('environment', 'draft')
+            path = args.get('path', '/')
+            return c._get(f"cms/v3/source-code/{env}/children?path={path}")
+        case 'hubspot_cms_source_get':
+            env = args.get('environment', 'draft')
+            return c._get(f"cms/v3/source-code/{env}/content/{args['path']}")
+        case 'hubspot_cms_source_create':
+            env = args.get('environment', 'draft')
+            return c._post_json(f"cms/v3/source-code/{env}/content/{args['path']}", {"source": args.get('body', '')})
+        case 'hubspot_cms_source_update':
+            env = args.get('environment', 'draft')
+            return c._put(f"cms/v3/source-code/{env}/content/{args['path']}", {"source": args.get('body', '')})
+        case 'hubspot_cms_source_delete':
+            env = args.get('environment', 'draft')
+            return _del(c, f"cms/v3/source-code/{env}/content/{args['path']}")
+        case 'hubspot_cms_source_metadata':
+            env = args.get('environment', 'draft')
+            return c._get(f"cms/v3/source-code/{env}/metadata/{args['path']}")
+        case 'hubspot_cms_source_validate':
+            env = args.get('environment', 'draft')
+            return c._post_json(f"cms/v3/source-code/{env}/validate/{args['path']}", {})
+
+        # ── Templates (Design Manager) ──────────────────────────────
+        case 'hubspot_cms_templates_list':
+            return c._get(f"cms/v2/templates?limit={args.get('limit', 50)}")
+        case 'hubspot_cms_template_get':
+            return c._get(f"cms/v2/templates/{args['template_id']}")
+        case 'hubspot_cms_template_create':
+            return c._post_json("cms/v2/templates", args.get('body', {}))
+        case 'hubspot_cms_template_update':
+            return c._put(f"cms/v2/templates/{args['template_id']}", args.get('body', {}))
+        case 'hubspot_cms_template_delete':
+            return _del(c, f"cms/v2/templates/{args['template_id']}")
+
+        # ── Themes ──────────────────────────────────────────────────
+        case 'hubspot_cms_themes_list':
+            return c._get("cms/v3/themes")
+        case 'hubspot_cms_theme_get':
+            return c._get(f"cms/v3/themes/{args['themeId']}")
+        case 'hubspot_cms_theme_settings_get':
+            return c._get(f"cms/v3/themes/{args['themeId']}/settings")
+        case 'hubspot_cms_theme_settings_update':
+            return c._patch(f"cms/v3/themes/{args['themeId']}/settings", args.get('body', {}))
+        case 'hubspot_cms_theme_fields_list':
+            return c._get(f"cms/v3/themes/{args['themeId']}/fields")
+
+        # ── Site Search ─────────────────────────────────────────────
+        case 'hubspot_cms_site_search':
+            qs = f"q={args['q']}&limit={args.get('limit', 50)}"
+            if args.get('type'):
+                qs += f"&type={args['type']}"
+            return c._get(f"cms/v3/site-search/search?{qs}")
+        case 'hubspot_cms_site_search_index_status':
+            return c._get(f"cms/v3/site-search/indexed-data/{args['contentId']}")
+
+        # ── Blog Authors ────────────────────────────────────────────
+        case 'hubspot_cms_blog_authors_list':
+            return c._get(f"cms/v3/blogs/authors?limit={args.get('limit', 50)}")
+        case 'hubspot_cms_blog_author_get':
+            return c._get(f"cms/v3/blogs/authors/{args['authorId']}")
+        case 'hubspot_cms_blog_author_create':
+            return c._post_json("cms/v3/blogs/authors", args.get('body', {}))
+        case 'hubspot_cms_blog_author_update':
+            return c._patch(f"cms/v3/blogs/authors/{args['authorId']}", args.get('body', {}))
+        case 'hubspot_cms_blog_author_delete':
+            return _del(c, f"cms/v3/blogs/authors/{args['authorId']}")
+
+        # ── Blog Tags ───────────────────────────────────────────────
+        case 'hubspot_cms_blog_tags_list':
+            return c._get(f"cms/v3/blogs/tags?limit={args.get('limit', 50)}")
+        case 'hubspot_cms_blog_tag_get':
+            return c._get(f"cms/v3/blogs/tags/{args['tagId']}")
+        case 'hubspot_cms_blog_tag_create':
+            return c._post_json("cms/v3/blogs/tags", args.get('body', {}))
+        case 'hubspot_cms_blog_tag_update':
+            return c._patch(f"cms/v3/blogs/tags/{args['tagId']}", args.get('body', {}))
+        case 'hubspot_cms_blog_tag_delete':
+            return _del(c, f"cms/v3/blogs/tags/{args['tagId']}")
+
+        # ── CMS Audit ───────────────────────────────────────────────
+        case 'hubspot_cms_audit_logs_list':
+            qs = f"limit={args.get('limit', 50)}"
+            if args.get('objectType'):
+                qs += f"&objectType={args['objectType']}"
+            return c._get(f"cms/v3/audit-logs?{qs}")
+        case 'hubspot_cms_content_audit':
+            return c._get("cms/v3/content/audit")
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 4 — Analytics & Custom Behavioral Events
+        # ══════════════════════════════════════════════════════════════
+
+        # ── Event Definitions ───────────────────────────────────────
+        case 'hubspot_events_definitions_list':
+            return c._get("analytics/v2/event-definitions")
+        case 'hubspot_events_definition_get':
+            return c._get(f"analytics/v2/event-definitions/{args['eventName']}")
+        case 'hubspot_events_definition_create':
+            return c._post_json("analytics/v2/event-definitions", args.get('body', {}))
+        case 'hubspot_events_definition_update':
+            return c._put(f"analytics/v2/event-definitions/{args['eventName']}", args.get('body', {}))
+        case 'hubspot_events_definition_delete':
+            return _del(c, f"analytics/v2/event-definitions/{args['eventName']}")
+        case 'hubspot_events_definition_properties_list':
+            return c._get(f"analytics/v2/event-definitions/{args['eventName']}/properties")
+        case 'hubspot_events_definition_property_create':
+            return c._post_json(f"analytics/v2/event-definitions/{args['eventName']}/properties", args.get('body', {}))
+        case 'hubspot_events_definition_property_update':
+            return c._put(f"analytics/v2/event-definitions/{args['eventName']}/properties/{args['propertyName']}", args.get('body', {}))
+        case 'hubspot_events_definition_property_delete':
+            return _del(c, f"analytics/v2/event-definitions/{args['eventName']}/properties/{args['propertyName']}")
+
+        # ── Fire behavioral events ──────────────────────────────────
+        case 'hubspot_events_send_v3':
+            return c._post_json("events/v3/send", args.get('body', {}))
+
+        # ── Analytics Reporting ─────────────────────────────────────
+        case 'hubspot_analytics_reports_list':
+            return c._get("analytics/v2/reports")
+        case 'hubspot_analytics_events_list':
+            return c._get(f"analytics/v2/events?objectType={args['objectType']}&objectId={args['objectId']}")
+        case 'hubspot_analytics_web_analytics':
+            return c._get(f"analytics/v1/analytics/by-event?start={args['start']}&end={args['end']}")
+        case 'hubspot_analytics_contact_events':
+            return c._get(f"analytics/v2/events?objectType=contacts&objectId={args['contactId']}")
+
+        # ── Goals ───────────────────────────────────────────────────
+        case 'hubspot_goals_list':
+            return c._get("crm/v3/goals/goal-targets")
+        case 'hubspot_goal_get':
+            return c._get(f"crm/v3/goals/goal-targets/{args['goalTargetId']}")
+        case 'hubspot_goal_create':
+            return c._post_json("crm/v3/goals/goal-targets", args.get('body', {}))
+        case 'hubspot_goal_update':
+            return c._patch(f"crm/v3/goals/goal-targets/{args['goalTargetId']}", args.get('body', {}))
+        case 'hubspot_goal_delete':
+            return _del(c, f"crm/v3/goals/goal-targets/{args['goalTargetId']}")
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 5 — OAuth & App Info
+        # ══════════════════════════════════════════════════════════════
+
+        case 'hubspot_oauth_token_info':
+            return c._get(f"oauth/v1/access-tokens/{args['token']}")
+        case 'hubspot_oauth_refresh':
+            body = {
+                "grant_type": "refresh_token",
+                "refresh_token": args['refresh_token'],
+                "client_id": args['client_id'],
+                "client_secret": args['client_secret'],
+            }
+            return c._post_json("oauth/v1/token", body)
+        case 'hubspot_oauth_revoke':
+            return _del(c, f"oauth/v1/refresh-tokens/{args['token']}")
+        case 'hubspot_app_info_get':
+            return c._get("integrations/v1/me")
+        case 'hubspot_integrations_installed_apps':
+            return c._get("integrations/v1/connected-apps")
+
+        # ── Webhooks Subscriptions v3 ───────────────────────────────
+        case 'hubspot_webhooks_app_settings_get':
+            return c._get(f"webhooks/v3/{args['appId']}/settings")
+        case 'hubspot_webhooks_app_settings_update':
+            return c._put(f"webhooks/v3/{args['appId']}/settings", args.get('body', {}))
+        case 'hubspot_webhooks_subscriptions_list':
+            return c._get(f"webhooks/v3/{args['appId']}/subscriptions")
+        case 'hubspot_webhooks_subscription_get':
+            return c._get(f"webhooks/v3/{args['appId']}/subscriptions/{args['subscriptionId']}")
+        case 'hubspot_webhooks_subscription_create':
+            return c._post_json(f"webhooks/v3/{args['appId']}/subscriptions", args.get('body', {}))
+        case 'hubspot_webhooks_subscription_update':
+            return c._patch(f"webhooks/v3/{args['appId']}/subscriptions/{args['subscriptionId']}", args.get('body', {}))
+        case 'hubspot_webhooks_subscription_delete':
+            return _del(c, f"webhooks/v3/{args['appId']}/subscriptions/{args['subscriptionId']}")
+        case 'hubspot_webhooks_subscriptions_batch_update':
+            return c._post_json(f"webhooks/v3/{args['appId']}/subscriptions/batch/update", {"inputs": args['inputs']})
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 6 — Settings (Users/Permissions/Roles full)
+        # ══════════════════════════════════════════════════════════════
+
+        case 'hubspot_settings_users_batch_create':
+            return c._post_json("settings/v3/users/batch/create", {"inputs": args['inputs']})
+        case 'hubspot_settings_users_batch_update':
+            return c._post_json("settings/v3/users/batch/update", {"inputs": args['inputs']})
+        case 'hubspot_settings_user_roles_list':
+            return c._get(f"settings/v3/users/{args['userId']}/roles")
+        case 'hubspot_settings_user_teams_list':
+            return c._get(f"settings/v3/users/{args['userId']}/teams")
+
+        # ── Permission Sets ─────────────────────────────────────────
+        case 'hubspot_permission_sets_list':
+            return c._get("settings/v3/users/roles")
+        case 'hubspot_permission_set_get':
+            return c._get(f"settings/v3/users/roles/{args['roleId']}")
+        case 'hubspot_permission_set_create':
+            return c._post_json("settings/v3/users/roles", args.get('body', {}))
+        case 'hubspot_permission_set_delete':
+            return _del(c, f"settings/v3/users/roles/{args['roleId']}")
+
+        # ── Account Info ────────────────────────────────────────────
+        case 'hubspot_account_info_get':
+            return c._get("account-info/v3/details")
+        case 'hubspot_account_info_api_usage':
+            return c._get("account-info/v3/api-usage/daily")
+        case 'hubspot_account_info_api_limits':
+            return c._get("account-info/v3/api-usage/monthly")
+
+        # ── Account Activity ────────────────────────────────────────
+        case 'hubspot_account_activity_login_list':
+            return c._get("settings/v3/activity/login")
+        case 'hubspot_account_activity_security_list':
+            return c._get("settings/v3/activity/security")
+
+        # ── CRM Property Options extras ─────────────────────────────
+        case 'hubspot_property_options_list':
+            return c._get(f"crm/v3/properties/{args['objectType']}/{args['propertyName']}/options")
+        case 'hubspot_property_options_create':
+            return c._post_json(f"crm/v3/properties/{args['objectType']}/{args['propertyName']}/options", args.get('body', {}))
+        case 'hubspot_property_options_update':
+            return c._patch(f"crm/v3/properties/{args['objectType']}/{args['propertyName']}/options/{args['optionId']}", args.get('body', {}))
+        case 'hubspot_property_options_delete':
+            return _del(c, f"crm/v3/properties/{args['objectType']}/{args['propertyName']}/options/{args['optionId']}")
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 7 — Service Hub / Knowledge Base
+        # ══════════════════════════════════════════════════════════════
+
+        # ── Knowledge Base Articles ─────────────────────────────────
+        case 'hubspot_kb_articles_list':
+            return c._get(f"content/api/v2/articles?limit={args.get('limit', 50)}")
+        case 'hubspot_kb_article_get':
+            return c._get(f"content/api/v2/articles/{args['articleId']}")
+        case 'hubspot_kb_article_create':
+            return c._post_json("content/api/v2/articles", args.get('body', {}))
+        case 'hubspot_kb_article_update':
+            return c._patch(f"content/api/v2/articles/{args['articleId']}", args.get('body', {}))
+        case 'hubspot_kb_article_delete':
+            return _del(c, f"content/api/v2/articles/{args['articleId']}")
+        case 'hubspot_kb_article_publish':
+            return c._post_json(f"content/api/v2/articles/{args['articleId']}/push-live", {})
+        case 'hubspot_kb_article_clone':
+            return c._post_json("content/api/v2/articles/clone", {"id": args['articleId']})
+        case 'hubspot_kb_articles_batch_archive':
+            return c._post_json("content/api/v2/articles/batch/destroy", {"inputs": args['inputs']})
+
+        # ── Knowledge Base Categories ───────────────────────────────
+        case 'hubspot_kb_categories_list':
+            return c._get("content/api/v2/article-categories")
+        case 'hubspot_kb_category_get':
+            return c._get(f"content/api/v2/article-categories/{args['categoryId']}")
+        case 'hubspot_kb_category_create':
+            return c._post_json("content/api/v2/article-categories", args.get('body', {}))
+        case 'hubspot_kb_category_update':
+            return c._patch(f"content/api/v2/article-categories/{args['categoryId']}", args.get('body', {}))
+        case 'hubspot_kb_category_delete':
+            return _del(c, f"content/api/v2/article-categories/{args['categoryId']}")
+
+        # ── Feedback Surveys ────────────────────────────────────────
+        case 'hubspot_feedback_surveys_list':
+            return c._get("feedback/v1/dashboards")
+        case 'hubspot_feedback_survey_responses':
+            return c._get(f"feedback/v1/submissions?startDate={args['startDate']}&endDate={args['endDate']}")
+
+        # ── Conversations Custom Channels ───────────────────────────
+        case 'hubspot_conv_custom_channels_list':
+            return c._get("conversations/v3/conversations/custom-channels")
+        case 'hubspot_conv_custom_channel_create':
+            return c._post_json("conversations/v3/conversations/custom-channels", args.get('body', {}))
+        case 'hubspot_conv_custom_channel_get':
+            return c._get(f"conversations/v3/conversations/custom-channels/{args['channelId']}")
+        case 'hubspot_conv_custom_channel_delete':
+            return _del(c, f"conversations/v3/conversations/custom-channels/{args['channelId']}")
+        case 'hubspot_conv_channel_account_create':
+            return c._post_json(f"conversations/v3/conversations/custom-channels/{args['channelId']}/channel-accounts", args.get('body', {}))
+
+        # ══════════════════════════════════════════════════════════════
+        # HUB 8 — CRM extras finais
+        # ══════════════════════════════════════════════════════════════
+
+        # ── Products extras ─────────────────────────────────────────
+        case 'hubspot_products_search':
+            return _search_objects(c, 'products', args['query'], limit=args.get('limit', 50))
+        case 'hubspot_products_batch_create':
+            return c._post_json("crm/v3/objects/products/batch/create", {"inputs": args['inputs']})
+        case 'hubspot_products_batch_update':
+            return c._post_json("crm/v3/objects/products/batch/update", {"inputs": args['inputs']})
+        case 'hubspot_products_batch_archive':
+            return c._post_json("crm/v3/objects/products/batch/archive", {"inputs": args['inputs']})
+        case 'hubspot_products_batch_read':
+            return c._post_json("crm/v3/objects/products/batch/read", {"inputs": args['inputs']})
+
+        # ── Quotes extras ──────────────────────────────────────────
+        case 'hubspot_quotes_search':
+            return _search_objects(c, 'quotes', args['query'], limit=args.get('limit', 50))
+        case 'hubspot_quotes_associations_list':
+            return c._get(f"crm/v4/objects/quotes/{args['quoteId']}/associations/{args['toObjectType']}")
+        case 'hubspot_quotes_associations_create':
+            return c._put(f"crm/v4/objects/quotes/{args['quoteId']}/associations/{args['toObjectType']}/{args['toObjectId']}/{args['associationTypeId']}", {})
+        case 'hubspot_quote_approve':
+            return c._patch(f"crm/v3/objects/quotes/{args['quoteId']}", {"properties": {"hs_status": "APPROVED"}})
+
+        # ── Line Items extras ──────────────────────────────────────
+        case 'hubspot_lineitems_search':
+            return _search_objects(c, 'line_items', args['query'], limit=args.get('limit', 50))
+        case 'hubspot_lineitems_associations':
+            return c._get(f"crm/v4/objects/line_items/{args['lineItemId']}/associations/{args['toObjectType']}")
+
+        # ── Postal Mail extras ─────────────────────────────────────
+        case 'hubspot_postal_mail_create':
+            return c._post_json("crm/v3/objects/postal_mail", {"properties": args['properties']})
+        case 'hubspot_postal_mail_update':
+            return c._patch(f"crm/v3/objects/postal_mail/{args['postalMailId']}", {"properties": args['properties']})
+        case 'hubspot_postal_mail_delete':
+            return _del(c, f"crm/v3/objects/postal_mail/{args['postalMailId']}")
+
+        # ── Calls extras ───────────────────────────────────────────
+        case 'hubspot_calls_update':
+            return c._patch(f"crm/v3/objects/calls/{args['callId']}", {"properties": args['properties']})
+        case 'hubspot_calls_delete':
+            return _del(c, f"crm/v3/objects/calls/{args['callId']}")
+        case 'hubspot_calls_search':
+            return _search_objects(c, 'calls', args['query'], limit=args.get('limit', 50))
+
+        # ── Emails extras ──────────────────────────────────────────
+        case 'hubspot_emails_create':
+            return c._post_json("crm/v3/objects/emails", {"properties": args['properties']})
+        case 'hubspot_emails_update':
+            return c._patch(f"crm/v3/objects/emails/{args['emailId']}", {"properties": args['properties']})
+        case 'hubspot_emails_delete':
+            return _del(c, f"crm/v3/objects/emails/{args['emailId']}")
+        case 'hubspot_emails_search':
+            return _search_objects(c, 'emails', args['query'], limit=args.get('limit', 50))
+
+        # ── Meetings extras ────────────────────────────────────────
+        case 'hubspot_meetings_create':
+            return c._post_json("crm/v3/objects/meetings", {"properties": args['properties']})
+        case 'hubspot_meetings_update':
+            return c._patch(f"crm/v3/objects/meetings/{args['meetingId']}", {"properties": args['properties']})
+        case 'hubspot_meetings_delete':
+            return _del(c, f"crm/v3/objects/meetings/{args['meetingId']}")
+        case 'hubspot_meetings_search':
+            return _search_objects(c, 'meetings', args['query'], limit=args.get('limit', 50))
+
+        # ── Notes extras ───────────────────────────────────────────
+        case 'hubspot_notes_update':
+            return c._patch(f"crm/v3/objects/notes/{args['noteId']}", {"properties": args['properties']})
+        case 'hubspot_notes_delete':
+            return _del(c, f"crm/v3/objects/notes/{args['noteId']}")
+        case 'hubspot_notes_search':
+            return _search_objects(c, 'notes', args['query'], limit=args.get('limit', 50))
+
+        # ── Custom Objects extras ──────────────────────────────────
+        case 'hubspot_custom_objects_update':
+            return c._patch(f"crm/v3/objects/{args['objectType']}/{args['objectId']}", {"properties": args['properties']})
+        case 'hubspot_custom_objects_delete':
+            return _del(c, f"crm/v3/objects/{args['objectType']}/{args['objectId']}")
+        case 'hubspot_custom_objects_search':
+            return _search_objects(c, args['objectType'], args['query'], limit=args.get('limit', 50))
+        case 'hubspot_custom_objects_batch_create':
+            return c._post_json(f"crm/v3/objects/{args['objectType']}/batch/create", {"inputs": args['inputs']})
+        case 'hubspot_custom_objects_batch_update':
+            return c._post_json(f"crm/v3/objects/{args['objectType']}/batch/update", {"inputs": args['inputs']})
+        case 'hubspot_custom_objects_schema_create':
+            return c._post_json("crm/v3/schemas", args.get('body', {}))
+        case 'hubspot_custom_objects_schema_update':
+            return c._patch(f"crm/v3/schemas/{args['objectType']}", args.get('body', {}))
+        case 'hubspot_custom_objects_schema_delete':
+            return _del(c, f"crm/v3/schemas/{args['objectType']}")
+        case 'hubspot_custom_objects_schema_labels':
+            return c._post_json(f"crm/v3/schemas/{args['objectType']}/labels", args.get('body', {}))
 
         case _:
             raise ValueError(f'Tool desconhecida: {name}')

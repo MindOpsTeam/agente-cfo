@@ -99,6 +99,11 @@ class HubSpotClient(BaseCRMClient):
         total = data.get("total", len(items)) if isinstance(data, dict) else len(items)
         return make_list_response(items, page=page, total_count=total)
 
+    def _put(self, path, body: dict):
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("PUT", url, headers=self.headers,
+                            body=_json.dumps(body).encode())
+
     def _patch(self, path, body: dict):
         url = f"{self.BASE_URL}/{path}"
         return http_request("PATCH", url, headers=self.headers,
