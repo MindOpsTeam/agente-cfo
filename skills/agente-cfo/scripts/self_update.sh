@@ -62,6 +62,7 @@ log "Verificando systemd units..."
 declare -A UNIT_SCRIPTS=(
     ["cfo-supabase-sync"]="${WORKSPACE_SKILLS}/supabase/scripts/supabase_sync.py"
     ["cfo-credentials-sync"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/credentials_sync.py"
+    ["cfo-evolution-sync"]="${WORKSPACE_SKILLS}/evolution-api/scripts/evolution_sync.py"
 )
 
 for unit_name in "${!UNIT_SCRIPTS[@]}"; do
@@ -102,7 +103,7 @@ done
 
 # ── 5. Restart daemons ────────────────────────────────────────────────────────
 log "Reiniciando daemons..."
-DAEMONS=(cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync)
+DAEMONS=(cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync cfo-evolution-sync)
 for daemon in "${DAEMONS[@]}"; do
     systemctl restart "${daemon}" 2>/dev/null && log "  restart ${daemon}" || warn "  ${daemon} não pôde ser reiniciado"
 done
