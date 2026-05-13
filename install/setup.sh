@@ -638,7 +638,30 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync."
+# Unit cfo-credentials-sync — Credentials Sync (Sprint 26 — Zero SSH)
+_CREDENTIALS_SYNC_SCRIPT="${SKILL_DEST}/scripts/credentials_sync.py"
+cat > /etc/systemd/system/cfo-credentials-sync.service << EOF
+[Unit]
+Description=Agente CFO - Integration Credentials Sync (Zero SSH)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_CREDENTIALS_SYNC_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -822,6 +845,11 @@ chmod +x "${HOME}/.openclaw/workspace/skills/supabase/doctor.sh" 2>/dev/null || 
 # Iniciar supabase sync daemon
 systemctl enable --now cfo-supabase-sync 2>/dev/null || warn "systemctl enable cfo-supabase-sync falhou."
 ok "cfo-supabase-sync.service iniciado (sync de projetos Supabase a cada ${SUPABASE_SYNC_INTERVAL_MIN:-5} min)."
+
+# Iniciar credentials sync daemon (Sprint 26 — Zero SSH)
+chmod +x "${SKILL_DEST}/scripts/self_update.sh" 2>/dev/null || true
+systemctl enable --now cfo-credentials-sync 2>/dev/null || warn "systemctl enable cfo-credentials-sync falhou."
+ok "cfo-credentials-sync.service iniciado (sync de credenciais a cada ${CREDENTIALS_SYNC_INTERVAL_MIN:-3} min)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
