@@ -101,12 +101,92 @@ class PipeRunClient(BaseCRMClient):
         return {"success": True, "action": "mark_deal_lost", "id": id,
                 "after": {"status": "lost", "reason": reason}, "raw": raw}
 
+    def _delete(self, path):
+        url = f"{self.BASE_URL}/{path}"
+        return http_request("DELETE", url, headers={"token": self.token})
+
     def company_info(self):
         data = self._get("companies", "limit=1")
         companies = data.get("data", []) if isinstance(data, dict) else []
         if companies:
             return {"name": companies[0].get("name", "N/A")}
         return {"name": "N/A"}
+
+    def get_deal(self, id: str):
+        return self._get(f"deals/{id}")
+
+    # ── Contatos ─────────────────────────────────────────────────────────────
+    def list_contacts(self, limit=50, page=1, search=None):
+        params = f"show={limit}&page={page}"
+        if search:
+            params += f"&name={search}"
+        return self._get("persons", params)
+
+    def get_contact(self, id: str):
+        return self._get(f"persons/{id}")
+
+    def create_contact(self, data: dict):
+        return self._post_json("persons", data)
+
+    def update_contact(self, id: str, data: dict):
+        return self._put(f"persons/{id}", data)
+
+    def delete_contact(self, id: str):
+        return self._delete(f"persons/{id}")
+
+    # ── Empresas ─────────────────────────────────────────────────────────────
+    def list_companies(self, limit=50, page=1, search=None):
+        params = f"show={limit}&page={page}"
+        if search:
+            params += f"&name={search}"
+        return self._get("companies", params)
+
+    def get_company(self, id: str):
+        return self._get(f"companies/{id}")
+
+    def create_company(self, data: dict):
+        return self._post_json("companies", data)
+
+    def update_company(self, id: str, data: dict):
+        return self._put(f"companies/{id}", data)
+
+    # ── Pipelines ────────────────────────────────────────────────────────────
+    def list_pipelines(self):
+        return self._get("pipelines")
+
+    # ── Steps/Stages ─────────────────────────────────────────────────────────
+    def list_stages(self, pipeline_id=None):
+        params = f"pipeline_id={pipeline_id}" if pipeline_id else ""
+        return self._get("steps", params)
+
+    # ── Atividades ───────────────────────────────────────────────────────────
+    def list_activities(self, deal_id=None, limit=50, page=1):
+        params = f"show={limit}&page={page}"
+        if deal_id:
+            params += f"&deal_id={deal_id}"
+        return self._get("activities", params)
+
+    def create_activity(self, data: dict):
+        return self._post_json("activities", data)
+
+    # ── Produtos ─────────────────────────────────────────────────────────────
+    def list_products(self, limit=50, page=1):
+        return self._get("items", f"show={limit}&page={page}")
+
+    def get_product(self, id: str):
+        return self._get(f"items/{id}")
+
+    # ── Campos customizados ──────────────────────────────────────────────────
+    def list_custom_fields(self):
+        return self._get("customFields")
+
+    # ── Usuários ─────────────────────────────────────────────────────────────
+    def list_users(self):
+        return self._get("users")
+
+    # ── Motivos de perda ─────────────────────────────────────────────────────
+    def list_lost_reasons(self):
+        return self._get("lostReasons")
 
 
 if __name__ == "__main__":
