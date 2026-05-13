@@ -227,13 +227,115 @@ class AsaasClient(BaseCobrancaClient):
         return {"success": True, "action": "cancel_invoice", "id": id, "raw": raw}
 
     def send_reminder(self, customer_id: str, message: str) -> dict:
-        # Asaas não tem endpoint de mensagem livre por customer — orientar ao send_payment_link
         return {
             "success": False,
             "note": "Asaas nao tem endpoint de mensagem livre por cliente. "
                     "Use send_payment_link --invoice_id <id> para enviar link de pagamento.",
             "customer_id": customer_id,
         }
+
+    def _put(self, path: str, body: dict) -> dict:
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        return http_request("PUT", url, headers=self.headers,
+                            body=_json.dumps(body).encode())
+
+    # ── Clientes ─────────────────────────────────────────────────────────────
+    def list_customers(self, limit=50, page=1, search=None):
+        offset = (page - 1) * limit
+        params = f"limit={min(limit, 100)}&offset={offset}"
+        if search:
+            params += f"&name={search}"
+        return self._get("customers", params)
+
+    def create_customer(self, data: dict):
+        return self._post("customers", data)
+
+    def update_customer(self, id: str, data: dict):
+        return self._put(f"customers/{id}", data)
+
+    def delete_customer(self, id: str):
+        return self._delete(f"customers/{id}")
+
+    # ── Assinaturas ──────────────────────────────────────────────────────────
+    def list_subscriptions(self, limit=50, page=1, customer_id=None):
+        offset = (page - 1) * limit
+        params = f"limit={min(limit, 100)}&offset={offset}"
+        if customer_id:
+            params += f"&customer={customer_id}"
+        return self._get("subscriptions", params)
+
+    def get_subscription(self, id: str):
+        return self._get(f"subscriptions/{id}")
+
+    def create_subscription(self, data: dict):
+        return self._post("subscriptions", data)
+
+    def update_subscription(self, id: str, data: dict):
+        return self._put(f"subscriptions/{id}", data)
+
+    def delete_subscription(self, id: str):
+        return self._delete(f"subscriptions/{id}")
+
+    # ── Notificações ─────────────────────────────────────────────────────────
+    def list_notifications(self, customer_id: str):
+        return self._get(f"customers/{customer_id}/notifications")
+
+    def update_notification(self, notification_id: str, data: dict):
+        return self._put(f"notifications/{notification_id}", data)
+
+    # ── Split de pagamento ───────────────────────────────────────────────────
+    def list_payment_splits(self, payment_id: str):
+        return self._get(f"payments/{payment_id}/splits")
+
+    # ── Antecipação ──────────────────────────────────────────────────────────
+    def request_anticipation(self, data: dict):
+        return self._post("anticipations", data)
+
+    def list_anticipations(self, limit=50, page=1):
+        offset = (page - 1) * limit
+        return self._get("anticipations", f"limit={min(limit, 100)}&offset={offset}")
+
+    # ── Transferências ───────────────────────────────────────────────────────
+    def list_transfers(self, limit=50, page=1):
+        offset = (page - 1) * limit
+        return self._get("transfers", f"limit={min(limit, 100)}&offset={offset}")
+
+    def create_transfer(self, data: dict):
+        return self._post("transfers", data)
+
+    # ── Extrato ──────────────────────────────────────────────────────────────
+    def get_financial_statement(self, from_date=None, to_date=None):
+        params = ""
+        if from_date:
+            params += f"startDate={from_date}"
+        if to_date:
+            params += f"&finishDate={to_date}" if params else f"finishDate={to_date}"
+        return self._get("financialTransactions", params)
+
+    # ── Webhooks ─────────────────────────────────────────────────────────────
+    def list_webhooks(self):
+        return self._get("webhook")
+
+    def create_webhook(self, data: dict):
+        return self._post("webhook", data)
+
+    # ── Subcontas ────────────────────────────────────────────────────────────
+    def list_subaccounts(self, limit=50, page=1):
+        offset = (page - 1) * limit
+        return self._get("accounts", f"limit={min(limit, 100)}&offset={offset}")
+
+    def create_subaccount(self, data: dict):
+        return self._post("accounts", data)
+
+    # ── PIX ──────────────────────────────────────────────────────────────────
+    def create_pix_key(self, data: dict):
+        return self._post("pix/addressKeys", data)
+
+    def list_pix_keys(self):
+        return self._get("pix/addressKeys")
+
+    def get_pix_qrcode(self, payment_id: str):
+        return self._get(f"payments/{payment_id}/pixQrCode")
 
 
 if __name__ == "__main__":
