@@ -226,6 +226,256 @@ class PipedriveClient(BaseCRMClient):
         return {"success": True, "action": "mark_deal_lost", "id": id,
                 "after": {"status": "lost", "reason": reason}, "raw": raw}
 
+    # ── DELETE helper ────────────────────────────────────────────────────────
+
+    def _delete(self, path: str) -> dict:
+        return http_request("DELETE", self._url(path), headers={
+            "Accept": "application/json",
+        })
+
+    # ── Deal detalhe ─────────────────────────────────────────────────────────
+
+    def get_deal(self, id: str) -> dict:
+        raw = self._get(f"deals/{id}")
+        d = raw.get("data") or {}
+        stage_id = d.get("stage_id")
+        stage_label = self._resolve_stage(stage_id) if stage_id else "unknown"
+        return {
+            "id": str(d.get("id", "")),
+            "title": d.get("title", ""),
+            "value": d.get("value"),
+            "currency": d.get("currency"),
+            "status": d.get("status"),
+            "stage": stage_label,
+            "expected_close_date": (d.get("expected_close_date") or "")[:10] or None,
+            "person_id": d.get("person_id"),
+            "org_id": d.get("org_id"),
+            "raw": d,
+        }
+
+    def delete_deal(self, id: str) -> dict:
+        raw = self._delete(f"deals/{id}")
+        return {"success": True, "action": "delete_deal", "id": id, "raw": raw}
+
+    # ── Persons (Contacts) ───────────────────────────────────────────────────
+
+    def list_persons(self, limit: int = 50, start: int = 0) -> dict:
+        raw = self._get("persons", f"limit={min(limit, 500)}&start={start}")
+        items = [{"id": str(p.get("id", "")), "name": p.get("name", ""),
+                  "email": (p.get("email") or [{}])[0].get("value", "") if isinstance(p.get("email"), list) else "",
+                  "phone": (p.get("phone") or [{}])[0].get("value", "") if isinstance(p.get("phone"), list) else "",
+                  "org_id": p.get("org_id")}
+                 for p in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    def get_person(self, id: str) -> dict:
+        raw = self._get(f"persons/{id}")
+        return raw.get("data") or {}
+
+    def create_person(self, name: str, email: str | None = None, phone: str | None = None, org_id: int | None = None) -> dict:
+        body: dict = {"name": name}
+        if email:
+            body["email"] = [{"value": email, "primary": True}]
+        if phone:
+            body["phone"] = [{"value": phone, "primary": True}]
+        if org_id:
+            body["org_id"] = org_id
+        raw = self._post("persons", body)
+        return {"success": True, "action": "create_person", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def update_person(self, id: str, name: str | None = None, email: str | None = None, phone: str | None = None) -> dict:
+        body: dict = {}
+        if name:
+            body["name"] = name
+        if email:
+            body["email"] = [{"value": email, "primary": True}]
+        if phone:
+            body["phone"] = [{"value": phone, "primary": True}]
+        raw = self._put(f"persons/{id}", body)
+        return {"success": True, "action": "update_person", "id": id, "raw": raw}
+
+    def delete_person(self, id: str) -> dict:
+        raw = self._delete(f"persons/{id}")
+        return {"success": True, "action": "delete_person", "id": id, "raw": raw}
+
+    # ── Organizations ────────────────────────────────────────────────────────
+
+    def list_organizations(self, limit: int = 50, start: int = 0) -> dict:
+        raw = self._get("organizations", f"limit={min(limit, 500)}&start={start}")
+        items = [{"id": str(o.get("id", "")), "name": o.get("name", ""),
+                  "address": o.get("address", "")}
+                 for o in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    def get_organization(self, id: str) -> dict:
+        raw = self._get(f"organizations/{id}")
+        return raw.get("data") or {}
+
+    def create_organization(self, name: str, address: str | None = None) -> dict:
+        body: dict = {"name": name}
+        if address:
+            body["address"] = address
+        raw = self._post("organizations", body)
+        return {"success": True, "action": "create_org", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def update_organization(self, id: str, name: str | None = None, address: str | None = None) -> dict:
+        body: dict = {}
+        if name:
+            body["name"] = name
+        if address:
+            body["address"] = address
+        raw = self._put(f"organizations/{id}", body)
+        return {"success": True, "action": "update_org", "id": id, "raw": raw}
+
+    def delete_organization(self, id: str) -> dict:
+        raw = self._delete(f"organizations/{id}")
+        return {"success": True, "action": "delete_org", "id": id, "raw": raw}
+
+    # ── Activities ───────────────────────────────────────────────────────────
+
+    def list_activities(self, limit: int = 50, start: int = 0) -> dict:
+        raw = self._get("activities", f"limit={min(limit, 500)}&start={start}")
+        items = [{"id": str(a.get("id", "")), "type": a.get("type", ""),
+                  "subject": a.get("subject", ""), "due_date": a.get("due_date"),
+                  "done": a.get("done"), "deal_id": a.get("deal_id"),
+                  "person_id": a.get("person_id")}
+                 for a in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    def create_activity(self, subject: str, type: str = "task", due_date: str | None = None,
+                        deal_id: int | None = None, person_id: int | None = None) -> dict:
+        body: dict = {"subject": subject, "type": type}
+        if due_date:
+            body["due_date"] = due_date
+        if deal_id:
+            body["deal_id"] = deal_id
+        if person_id:
+            body["person_id"] = person_id
+        raw = self._post("activities", body)
+        return {"success": True, "action": "create_activity", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    # ── Products ─────────────────────────────────────────────────────────────
+
+    def list_products(self, limit: int = 50, start: int = 0) -> dict:
+        raw = self._get("products", f"limit={min(limit, 500)}&start={start}")
+        items = [{"id": str(p.get("id", "")), "name": p.get("name", ""),
+                  "code": p.get("code", ""), "unit": p.get("unit", ""),
+                  "prices": p.get("prices")}
+                 for p in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    def get_product(self, id: str) -> dict:
+        raw = self._get(f"products/{id}")
+        return raw.get("data") or {}
+
+    def create_product(self, name: str, code: str | None = None, unit: str | None = None,
+                       price: float | None = None) -> dict:
+        body: dict = {"name": name}
+        if code:
+            body["code"] = code
+        if unit:
+            body["unit"] = unit
+        if price is not None:
+            body["prices"] = [{"price": price, "currency": "BRL"}]
+        raw = self._post("products", body)
+        return {"success": True, "action": "create_product", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    # ── Pipelines ────────────────────────────────────────────────────────────
+
+    def list_pipelines(self) -> dict:
+        raw = self._get("pipelines")
+        items = [{"id": str(p.get("id", "")), "name": p.get("name", ""),
+                  "active": p.get("active"), "deal_probability": p.get("deal_probability")}
+                 for p in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    # ── Stages ───────────────────────────────────────────────────────────────
+
+    def list_stages(self, pipeline_id: int | None = None) -> dict:
+        params = ""
+        if pipeline_id:
+            params = f"pipeline_id={pipeline_id}"
+        raw = self._get("stages", params)
+        items = [{"id": str(s.get("id", "")), "name": s.get("name", ""),
+                  "pipeline_id": s.get("pipeline_id"), "order_nr": s.get("order_nr")}
+                 for s in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    # ── Notes ────────────────────────────────────────────────────────────────
+
+    def list_notes(self, deal_id: int | None = None, person_id: int | None = None, limit: int = 50, start: int = 0) -> dict:
+        params = f"limit={min(limit, 500)}&start={start}"
+        if deal_id:
+            params += f"&deal_id={deal_id}"
+        if person_id:
+            params += f"&person_id={person_id}"
+        raw = self._get("notes", params)
+        items = [{"id": str(n.get("id", "")), "content": n.get("content", ""),
+                  "deal_id": n.get("deal_id"), "person_id": n.get("person_id"),
+                  "org_id": n.get("org_id")}
+                 for n in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    def create_note(self, content: str, deal_id: int | None = None, person_id: int | None = None,
+                    org_id: int | None = None) -> dict:
+        body: dict = {"content": content}
+        if deal_id:
+            body["deal_id"] = deal_id
+        if person_id:
+            body["person_id"] = person_id
+        if org_id:
+            body["org_id"] = org_id
+        raw = self._post("notes", body)
+        return {"success": True, "action": "create_note", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    # ── Users ────────────────────────────────────────────────────────────────
+
+    def list_users(self) -> dict:
+        raw = self._get("users")
+        items = [{"id": str(u.get("id", "")), "name": u.get("name", ""),
+                  "email": u.get("email", ""), "active": u.get("active_flag")}
+                 for u in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    # ── Webhooks ─────────────────────────────────────────────────────────────
+
+    def list_webhooks(self) -> dict:
+        raw = self._get("webhooks")
+        items = [{"id": str(w.get("id", "")), "subscription_url": w.get("subscription_url", ""),
+                  "event_action": w.get("event_action"), "event_object": w.get("event_object")}
+                 for w in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    def create_webhook(self, subscription_url: str, event_action: str, event_object: str) -> dict:
+        body = {"subscription_url": subscription_url, "event_action": event_action, "event_object": event_object}
+        raw = self._post("webhooks", body)
+        return {"success": True, "action": "create_webhook", "id": str((raw.get("data") or {}).get("id", "")), "raw": raw}
+
+    def delete_webhook(self, id: str) -> dict:
+        raw = self._delete(f"webhooks/{id}")
+        return {"success": True, "action": "delete_webhook", "id": id, "raw": raw}
+
+    # ── Goals ────────────────────────────────────────────────────────────────
+
+    def list_goals(self) -> dict:
+        raw = self._get("goals/find")
+        items = [{"id": str(g.get("id", "")), "title": g.get("title", ""),
+                  "goal_type": g.get("goal_type"), "expected_outcome": g.get("expected_outcome")}
+                 for g in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
+    # ── Filters ──────────────────────────────────────────────────────────────
+
+    def list_filters(self, type: str | None = None) -> dict:
+        params = ""
+        if type:
+            params = f"type={type}"
+        raw = self._get("filters", params)
+        items = [{"id": str(f.get("id", "")), "name": f.get("name", ""),
+                  "type": f.get("type"), "active_flag": f.get("active_flag")}
+                 for f in (raw.get("data") or [])]
+        return {"items": items, "count": len(items)}
+
 
 if __name__ == "__main__":
     try:
