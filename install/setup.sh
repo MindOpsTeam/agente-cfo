@@ -616,8 +616,29 @@ RestartSec=30
 WantedBy=multi-user.target
 EOF
 
+# Unit cfo-supabase-sync — Supabase Projects Sync (Sprint 25)
+_SUPABASE_SYNC_SCRIPT="${HOME}/.openclaw/workspace/skills/supabase/scripts/supabase_sync.py"
+cat > /etc/systemd/system/cfo-supabase-sync.service << EOF
+[Unit]
+Description=Agente CFO - Supabase Projects Sync
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_SUPABASE_SYNC_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine."
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -792,6 +813,15 @@ ok "cfo-proactive.service iniciado (detecção de anomalias a cada ${CFO_PROACTI
 systemctl enable --now cfo-automation-engine 2>/dev/null || warn "systemctl enable cfo-automation-engine falhou."
 # NÃO desativa cfo-proactive aqui — mantém para rollback
 info "cfo-automation-engine ativado. cfo-proactive mantido (rollback disponível)."
+
+# Instalar skill supabase (Sprint 25)
+_install_skill_from_repo "supabase"
+chmod +x "${HOME}/.openclaw/workspace/skills/supabase/connect.sh" 2>/dev/null || true
+chmod +x "${HOME}/.openclaw/workspace/skills/supabase/doctor.sh" 2>/dev/null || true
+
+# Iniciar supabase sync daemon
+systemctl enable --now cfo-supabase-sync 2>/dev/null || warn "systemctl enable cfo-supabase-sync falhou."
+ok "cfo-supabase-sync.service iniciado (sync de projetos Supabase a cada ${SUPABASE_SYNC_INTERVAL_MIN:-5} min)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
