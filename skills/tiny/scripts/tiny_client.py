@@ -105,6 +105,120 @@ class TinyClient(BaseERPClient):
         except Exception:
             return {"name": "N/A", "cnpj": None, "segment": "ERP"}
 
+    def _post(self, endpoint, body_xml: str):
+        """POST com corpo XML urlencoded (padrão Tiny API v2)."""
+        import json as _json
+        url = f"{self.BASE_URL}/{endpoint}"
+        form = urllib.parse.urlencode({"token": self.token, "formato": "JSON", "contato": body_xml})
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        return http_request("POST", url, headers=headers, body=form.encode())
+
+    def _post_form(self, endpoint, extra_fields: dict):
+        fields = {"token": self.token, "formato": "JSON", **extra_fields}
+        url = f"{self.BASE_URL}/{endpoint}"
+        form = urllib.parse.urlencode(fields)
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        data = http_request("POST", url, headers=headers, body=form.encode())
+        retorno = data.get("retorno", data) if isinstance(data, dict) else data
+        return retorno
+
+    # ── Contatos (Clientes/Fornecedores) ─────────────────────────────────────
+    def list_contacts(self, search=None, page=1):
+        params = f"&pagina={page}"
+        if search:
+            params += f"&pesquisa={urllib.parse.quote(search)}"
+        data = self._get("contatos.pesquisa.php", params)
+        return data.get("contatos", data) if isinstance(data, dict) else data
+
+    def get_contact(self, id: str):
+        data = self._get(f"contato.obter.php", f"&id={id}")
+        return data.get("contato", data) if isinstance(data, dict) else data
+
+    def create_contact(self, contact_data: dict):
+        import json as _json
+        return self._post_form("contato.incluir.php", {"contato": _json.dumps({"contatos": [{"contato": contact_data}]})})
+
+    def update_contact(self, contact_data: dict):
+        import json as _json
+        return self._post_form("contato.alterar.php", {"contato": _json.dumps({"contatos": [{"contato": contact_data}]})})
+
+    # ── Produtos ─────────────────────────────────────────────────────────────
+    def list_products(self, search=None, page=1):
+        params = f"&pagina={page}"
+        if search:
+            params += f"&pesquisa={urllib.parse.quote(search)}"
+        data = self._get("produtos.pesquisa.php", params)
+        return data.get("produtos", data) if isinstance(data, dict) else data
+
+    def get_product(self, id: str):
+        data = self._get("produto.obter.php", f"&id={id}")
+        return data.get("produto", data) if isinstance(data, dict) else data
+
+    def create_product(self, product_data: dict):
+        import json as _json
+        return self._post_form("produto.incluir.php", {"produto": _json.dumps({"produtos": [{"produto": product_data}]})})
+
+    def update_product(self, product_data: dict):
+        import json as _json
+        return self._post_form("produto.alterar.php", {"produto": _json.dumps({"produtos": [{"produto": product_data}]})})
+
+    # ── Pedidos ──────────────────────────────────────────────────────────────
+    def list_orders(self, search=None, page=1, situacao=None):
+        params = f"&pagina={page}"
+        if search:
+            params += f"&pesquisa={urllib.parse.quote(search)}"
+        if situacao:
+            params += f"&situacao={situacao}"
+        data = self._get("pedidos.pesquisa.php", params)
+        return data.get("pedidos", data) if isinstance(data, dict) else data
+
+    def get_order(self, id: str):
+        data = self._get("pedido.obter.php", f"&id={id}")
+        return data.get("pedido", data) if isinstance(data, dict) else data
+
+    def create_order(self, order_data: dict):
+        import json as _json
+        return self._post_form("pedido.incluir.php", {"pedido": _json.dumps({"pedido": order_data})})
+
+    def update_order_status(self, id: str, situacao: str):
+        return self._post_form("pedido.alterar.situacao.php", {"id": id, "situacao": situacao})
+
+    # ── Notas Fiscais ────────────────────────────────────────────────────────
+    def list_invoices(self, search=None, page=1, situacao=None):
+        params = f"&pagina={page}"
+        if search:
+            params += f"&pesquisa={urllib.parse.quote(search)}"
+        if situacao:
+            params += f"&situacao={situacao}"
+        data = self._get("notas.fiscais.pesquisa.php", params)
+        return data.get("notas_fiscais", data) if isinstance(data, dict) else data
+
+    def get_invoice(self, id: str):
+        data = self._get("nota.fiscal.obter.php", f"&id={id}")
+        return data.get("nota_fiscal", data) if isinstance(data, dict) else data
+
+    def get_invoice_xml(self, id: str):
+        data = self._get("nota.fiscal.obter.xml.php", f"&id={id}")
+        return data
+
+    def emit_invoice(self, id: str):
+        return self._post_form("nota.fiscal.emitir.php", {"id": id})
+
+    # ── Estoque ──────────────────────────────────────────────────────────────
+    def get_stock(self, id: str):
+        data = self._get("produto.obter.estoque.php", f"&id={id}")
+        return data.get("produto", data) if isinstance(data, dict) else data
+
+    # ── Formas de Pagamento ──────────────────────────────────────────────────
+    def list_payment_methods(self):
+        data = self._get("formas.pagamento.pesquisa.php")
+        return data.get("formas_pagamento", data) if isinstance(data, dict) else data
+
+    # ── Listas de Preço ──────────────────────────────────────────────────────
+    def list_price_lists(self, page=1):
+        data = self._get("lista.precos.pesquisa.php", f"&pagina={page}")
+        return data.get("listas_precos", data) if isinstance(data, dict) else data
+
 
 if __name__ == "__main__":
     try:
