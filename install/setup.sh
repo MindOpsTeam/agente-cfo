@@ -661,7 +661,30 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync."
+# Unit cfo-evolution-sync — Evolution API WhatsApp Sync (Sprint 27)
+_EVOLUTION_SYNC_SCRIPT="${HOME}/.openclaw/workspace/skills/evolution-api/scripts/evolution_sync.py"
+cat > /etc/systemd/system/cfo-evolution-sync.service << EOF
+[Unit]
+Description=Agente CFO - Evolution API WhatsApp Sync
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_EVOLUTION_SYNC_SCRIPT}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -850,6 +873,14 @@ ok "cfo-supabase-sync.service iniciado (sync de projetos Supabase a cada ${SUPAB
 chmod +x "${SKILL_DEST}/scripts/self_update.sh" 2>/dev/null || true
 systemctl enable --now cfo-credentials-sync 2>/dev/null || warn "systemctl enable cfo-credentials-sync falhou."
 ok "cfo-credentials-sync.service iniciado (sync de credenciais a cada ${CREDENTIALS_SYNC_INTERVAL_MIN:-3} min)."
+
+# Instalar skill evolution-api e iniciar daemon (Sprint 27)
+_install_skill_from_repo "evolution-api"
+chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/scripts/send_evolution.sh" 2>/dev/null || true
+chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/connect.sh" 2>/dev/null || true
+chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/doctor.sh" 2>/dev/null || true
+systemctl enable --now cfo-evolution-sync 2>/dev/null || warn "systemctl enable cfo-evolution-sync falhou."
+ok "cfo-evolution-sync.service iniciado (sync WhatsApp multi-instância a cada ${EVOLUTION_SYNC_INTERVAL_S:-30}s)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
