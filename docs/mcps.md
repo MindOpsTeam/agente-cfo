@@ -2,7 +2,7 @@
 
 Cada skill expõe um MCP server stdio (`mcp_server.py`) consumível por qualquer cliente MCP (Claude Code, OpenClaw, etc).
 
-**Última atualização:** Sprint 23 — 1084 tools totais (era 878 no Sprint 22)
+**Última atualização:** Sprint 24 — 1280 tools totais (era 1084 no Sprint 23)
 
 ## Como rodar
 
@@ -14,7 +14,7 @@ source /opt/agente-cfo/.venv/bin/activate
 python3 skills/<nome>/mcp_server.py
 ```
 
-## Tabela de cobertura (Sprint 23)
+## Tabela de cobertura (Sprint 24)
 
 | Skill | Categoria | Tools | Principais recursos cobertos | URL doc |
 |-------|-----------|------:|------------------------------|---------|
@@ -25,7 +25,7 @@ python3 skills/<nome>/mcp_server.py
 | vhsys | ERP | **54** | clientes, produtos, pedidos de venda/compra, NF-e, contas bancárias, financeiro, fornecedores, vendedores, categorias, centro de custo | https://developers.vhsys.com.br/ |
 | nibo | ERP | **40** | contas bancárias, clientes, fornecedores, contas a pagar/receber, categorias, centros de custo, transferências, conciliação | https://api.nibo.com.br/docs |
 | contaazul | ERP | **32** | clientes, produtos, pedidos de venda, contas a pagar/receber, NF-e, contas bancárias, categorias | https://developers.contaazul.com/reference |
-| hubspot | CRM | **267** | CRM (contacts, companies, deals, tickets, line items, quotes, notes, calls, emails, meetings, tasks, products, associations, batch ops), CMS (blog posts, site/landing pages, redirects, domains, HubDB), Files, Conversations (threads, messages, inboxes), Marketing (events, campaigns, subscriptions, transactional email), Settings (users, teams, business units, currencies), Automation (workflows, sequences), CRM extras (imports, exports, lists, audit logs), properties CRUD, pipelines CRUD, owners, forms, CRM search | https://developers.hubspot.com/docs/api/crm/contacts |
+| hubspot | CRM | **463** | CRM Core (contacts, companies, deals, tickets, line items, quotes, notes, calls, emails, meetings, tasks, products, associations, batch ops, custom objects full), CMS (blog posts, site/landing pages, redirects, domains, HubDB, source code, templates, themes, blog authors/tags, site search, audit), Files, Conversations (threads, messages, inboxes, custom channels), Marketing (events, campaigns, subscriptions, transactional email, forms v3, email stats, workflows v1), Settings (users batch, teams, roles/permissions, account info, API usage, activity logs, property options), Automation (workflows v4, sequences full + steps + enrollments, custom actions), Analytics (event definitions, behavioral events, web analytics, goals), OAuth/App info, Webhooks v3, KB articles + categories, feedback surveys | https://developers.hubspot.com/docs/api/crm/contacts |
 | rd-station | CRM | **27** | contatos, leads, oportunidades, funil, segmentações, automações, campos customizados, conversões, webhooks | https://developers.rdstation.com/reference |
 | piperun | CRM | **27** | deals, pipelines, stages, contatos, empresas, atividades, campos custom, produtos, usuários | https://vendas.developers.pipe.run/ |
 | pipedrive | CRM | **144** | deals, persons, organizations, activities, products, pipelines, stages, notes, users, webhooks, goals, filters, leads, lead labels, call logs, mailbox, custom fields, roles, files, currencies, item search, subscriptions, projects, meetings providers, changelogs | https://developers.pipedrive.com/docs/api/v1/ |
@@ -35,7 +35,7 @@ python3 skills/<nome>/mcp_server.py
 | mercado-livre | E-commerce | **27** | itens (publicações), pedidos, perguntas/respostas, mensagens, vendedor, categorias, envios, devoluções | https://developers.mercadolivre.com.br/pt_br/api-docs-pt-br |
 | nuvemshop | E-commerce | **35** | produtos, variantes, categorias, clientes, pedidos, cupons, páginas, frete, metafields, webhooks | https://dev.tiendanube.com/pt/api |
 
-**Total Sprint 23: 16 skills · 1084 tools · 16/16 smoke tests passando**
+**Total Sprint 24: 16 skills · 1280 tools · 16/16 smoke tests passando**
 
 ### Cobertura HubSpot por hub
 
@@ -49,7 +49,16 @@ python3 skills/<nome>/mcp_server.py
 | Settings Hub | 13 | users, teams, business units, currencies |
 | Automation Hub | 9 | workflows, sequences |
 | CRM Extras | 18 | imports, exports, lists + memberships, audit logs, behavioral events |
-| **Total HubSpot** | **267** | |
+| **Sprint 24 additions** | | |
+| Marketing Workflows & Forms v3 | 37 | workflows legacy v1 (CRUD + enroll), forms v3 (CRUD + submissions + fields), email stats, marketing emails extras (create/clone/schedule), lists v3 extras (search, batch, folders) |
+| Automation Sequences full | 25 | sequences v4 (CRUD + steps), sequence enrollments (pause/resume), custom workflow actions (CRUD + functions + revisions) |
+| CMS Source Code + Templates | 32 | source code files (CRUD + validate + metadata), templates v2, themes (settings + fields), site search, blog authors/tags CRUD, CMS audit logs |
+| Analytics & Behavioral Events | 19 | event definitions (CRUD + properties), fire events v3, analytics reports, web analytics, contact events, goals CRUD |
+| OAuth & App Info | 14 | OAuth token info/refresh/revoke, app info, installed apps, webhooks v3 subscriptions (CRUD + batch + settings) |
+| Settings Users/Roles full | 17 | users batch create/update, user roles/teams list, permission sets CRUD, account info/API usage/limits, login/security activity, property options CRUD |
+| Service Hub / KB | 20 | KB articles (CRUD + publish + clone + batch), KB categories CRUD, feedback surveys/responses, conversations custom channels (CRUD + accounts) |
+| CRM Objects Extras | 32 | products/quotes/lineitems/calls/emails/meetings/notes search + batch, postal mail CRUD, custom objects (update/delete/search/batch/schema CRUD + labels) |
+| **Total HubSpot** | **463** | |
 
 ---
 
@@ -61,6 +70,7 @@ python3 skills/<nome>/mcp_server.py
 | Sprint 21 | **524** | 15/15 (expandidas via doc oficial) |
 | Sprint 22 | **878** | 16/16 (+kommo do zero, 4 skills expandidas) |
 | Sprint 23 | **1084** | 16/16 (HubSpot 100% hubs, gaps Kommo/Pipedrive/Omie/Bling) |
+| Sprint 24 | **1280** | 16/16 (HubSpot 267→463 — 8 hubs novos: workflows v1, forms v3, sequences full, CMS source/templates/themes, analytics/events, OAuth/webhooks v3, settings full, KB/service hub, CRM extras) |
 
 ---
 
