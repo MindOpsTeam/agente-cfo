@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-MCP server para Omie ERP — 25 tools.
+MCP server para Omie ERP — 40 tools.
 Endpoints cobertos: clientes, produtos, pedidos, financeiro (pagar/receber),
-NF-e, estoque, empresa, saldo, vencidos.
+NF-e, estoque, departamentos, projetos, categorias, contas correntes,
+tags, lançamentos, fluxo de caixa, ordens de serviço, empresa, saldo, vencidos.
 """
 import asyncio
 import json
@@ -13,11 +14,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'scripts'))
 from omie_client import (
     clientes_listar, clientes_buscar, clientes_detalhar,
+    clientes_criar, clientes_atualizar,
     produtos_listar, produtos_detalhar,
-    pedidos_listar, pedidos_detalhar, pedidos_status,
+    produtos_criar, produtos_atualizar,
+    pedidos_listar, pedidos_detalhar, pedidos_status, pedidos_criar,
     contas_receber, contas_pagar, resumo_financeiro,
-    nfe_listar, nfe_detalhar,
+    nfe_listar, nfe_detalhar, nfe_xml, nfe_cancelar,
     estoque_posicao, estoque_produto,
+    departamentos_listar, projetos_listar, categorias_listar,
+    contas_correntes_listar, tags_listar,
+    lancamentos_listar, fluxo_caixa,
+    os_listar, os_detalhar,
     unified_get_balance, unified_list_payables, unified_list_receivables,
     unified_list_overdue, unified_company_info,
     unified_pay_payable, unified_mark_received,
@@ -315,6 +322,59 @@ async def list_tools() -> list[types.Tool]:
             description='Informações da empresa conectada ao Omie',
             inputSchema={'type': 'object', 'properties': {}, 'required': []}
         ),
+        # ── Novos Sprint 21 ──
+        types.Tool(name='omie_clientes_criar', description='Cria novo cliente no Omie',
+                   inputSchema={'type':'object','properties':{
+                       'razao_social':{'type':'string'},'cnpj_cpf':{'type':'string'},
+                       'nome_fantasia':{'type':'string'},'email':{'type':'string'},
+                       'telefone1_numero':{'type':'string'},
+                   },'required':['razao_social','cnpj_cpf']}),
+        types.Tool(name='omie_clientes_atualizar', description='Atualiza cliente no Omie',
+                   inputSchema={'type':'object','properties':{
+                       'codigo_cliente_omie':{'type':'integer','description':'Código do cliente'},
+                       'razao_social':{'type':'string'},'email':{'type':'string'},
+                   },'required':['codigo_cliente_omie']}),
+        types.Tool(name='omie_produtos_criar', description='Cria novo produto no Omie',
+                   inputSchema={'type':'object','properties':{
+                       'descricao':{'type':'string'},'valor_unitario':{'type':'number'},
+                       'codigo':{'type':'string','description':'Código interno'},
+                       'unidade':{'type':'string'},
+                   },'required':['descricao']}),
+        types.Tool(name='omie_produtos_atualizar', description='Atualiza produto no Omie',
+                   inputSchema={'type':'object','properties':{
+                       'codigo_produto':{'type':'integer'},'descricao':{'type':'string'},
+                       'valor_unitario':{'type':'number'},
+                   },'required':['codigo_produto']}),
+        types.Tool(name='omie_pedidos_criar', description='Cria novo pedido de venda no Omie',
+                   inputSchema={'type':'object','properties':{
+                       'codigo_cliente':{'type':'integer','description':'Código do cliente'},
+                       'itens':{'type':'array','description':'Lista de itens do pedido'},
+                   },'required':['codigo_cliente','itens']}),
+        types.Tool(name='omie_departamentos_listar', description='Lista departamentos do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_projetos_listar', description='Lista projetos do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_categorias_listar', description='Lista categorias financeiras do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':50}},'required':[]}),
+        types.Tool(name='omie_contas_correntes_listar', description='Lista contas correntes/bancárias do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_tags_listar', description='Lista tags/etiquetas do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':50}},'required':[]}),
+        types.Tool(name='omie_lancamentos_listar', description='Lista lançamentos financeiros (extrato) do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_fluxo_caixa', description='Consulta fluxo de caixa do Omie',
+                   inputSchema={'type':'object','properties':{
+                       'data_inicio':{'type':'string','description':'DD/MM/YYYY'},
+                       'data_fim':{'type':'string','description':'DD/MM/YYYY'},
+                   },'required':[]}),
+        types.Tool(name='omie_nfe_xml', description='Obtém XML de uma NF-e pelo número',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer'}},'required':['numero']}),
+        types.Tool(name='omie_nfe_cancelar', description='Cancela uma NF-e no Omie',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer'},'motivo':{'type':'string','default':'Cancelamento'}},'required':['numero']}),
+        types.Tool(name='omie_os_listar', description='Lista ordens de serviço do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_os_detalhar', description='Obtém detalhes de uma ordem de serviço',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer'}},'required':['numero']}),
     ]
 
 
@@ -409,6 +469,31 @@ def _dispatch(name: str, args: dict):
             return unified_cancel_payable(args['id'])
         case 'omie_empresa':
             return unified_company_info()
+        # Novos Sprint 21
+        case 'omie_clientes_criar': return clientes_criar(args)
+        case 'omie_clientes_atualizar': return clientes_atualizar(args)
+        case 'omie_produtos_criar': return produtos_criar(args)
+        case 'omie_produtos_atualizar': return produtos_atualizar(args)
+        case 'omie_pedidos_criar': return pedidos_criar(args)
+        case 'omie_departamentos_listar':
+            return departamentos_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_projetos_listar':
+            return projetos_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_categorias_listar':
+            return categorias_listar(args.get('pagina', 1), args.get('por_pagina', 50))
+        case 'omie_contas_correntes_listar':
+            return contas_correntes_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_tags_listar':
+            return tags_listar(args.get('pagina', 1), args.get('por_pagina', 50))
+        case 'omie_lancamentos_listar':
+            return lancamentos_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_fluxo_caixa':
+            return fluxo_caixa(data_inicio=args.get('data_inicio'), data_fim=args.get('data_fim'))
+        case 'omie_nfe_xml': return nfe_xml(args['numero'])
+        case 'omie_nfe_cancelar': return nfe_cancelar(args['numero'], motivo=args.get('motivo', 'Cancelamento'))
+        case 'omie_os_listar':
+            return os_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_os_detalhar': return os_detalhar(args['numero'])
         case _:
             raise ValueError(f'Tool desconhecida: {name}')
 

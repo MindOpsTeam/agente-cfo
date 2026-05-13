@@ -466,3 +466,109 @@ if __name__ == "__main__":
     except Exception as e:
         print(json.dumps({"error": str(e)}, indent=2))
         sys.exit(1)
+
+
+# ── Departamentos ────────────────────────────────────────────────────────────
+
+def departamentos_listar(pagina=1, por_pagina=20):
+    return api_call("geral/departamentos", "ListarDepartamentos", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Projetos ─────────────────────────────────────────────────────────────────
+
+def projetos_listar(pagina=1, por_pagina=20):
+    return api_call("geral/projetos", "ListarProjetos", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Categorias ───────────────────────────────────────────────────────────────
+
+def categorias_listar(pagina=1, por_pagina=50):
+    return api_call("geral/categorias", "ListarCategorias", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Contas Correntes ─────────────────────────────────────────────────────────
+
+def contas_correntes_listar(pagina=1, por_pagina=20):
+    return api_call("geral/contacorrente", "ListarContasCorrentes", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Centros de Custo ─────────────────────────────────────────────────────────
+
+def centros_custo_listar(pagina=1, por_pagina=50):
+    # TODO: verificar endpoint exato na doc oficial
+    return api_call("geral/categorias", "ListarCategorias", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina, "filtrar_apenas_tipo": "D"}
+    ])
+
+# ── Tags/Etiquetas ───────────────────────────────────────────────────────────
+
+def tags_listar(pagina=1, por_pagina=50):
+    return api_call("geral/etiquetas", "ListarEtiquetas", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Lançamentos Financeiros (extrato) ────────────────────────────────────────
+
+def lancamentos_listar(pagina=1, por_pagina=20):
+    return api_call("financas/extrato", "ListarExtrato", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Fluxo de Caixa ──────────────────────────────────────────────────────────
+
+def fluxo_caixa(data_inicio=None, data_fim=None):
+    params = {}
+    if data_inicio:
+        params["dDtInicio"] = data_inicio
+    if data_fim:
+        params["dDtFim"] = data_fim
+    return api_call("financas/pesquisartitulos", "PesquisarLancamentos", [params])
+
+# ── NF-e extras ──────────────────────────────────────────────────────────────
+
+def nfe_xml(numero: int):
+    return api_call("produtos/nfe", "ObterNFe", [
+        {"nNF": numero, "lRetornarXml": True}
+    ])
+
+def nfe_cancelar(numero: int, motivo: str = "Cancelamento"):
+    return api_call("produtos/nfe", "CancelarNFe", [
+        {"nNF": numero, "cMotivo": motivo}
+    ])
+
+# ── Clientes extras ─────────────────────────────────────────────────────────
+
+def clientes_criar(dados: dict):
+    return api_call("geral/clientes", "IncluirCliente", [dados])
+
+def clientes_atualizar(dados: dict):
+    return api_call("geral/clientes", "AlterarCliente", [dados])
+
+# ── Produtos extras ──────────────────────────────────────────────────────────
+
+def produtos_criar(dados: dict):
+    return api_call("geral/produtos", "IncluirProduto", [dados])
+
+def produtos_atualizar(dados: dict):
+    return api_call("geral/produtos", "AlterarProduto", [dados])
+
+# ── Pedidos extras ───────────────────────────────────────────────────────────
+
+def pedidos_criar(dados: dict):
+    return api_call("produtos/pedido", "IncluirPedido", [dados])
+
+# ── Ordem de Serviço ─────────────────────────────────────────────────────────
+
+def os_listar(pagina=1, por_pagina=20):
+    return api_call("servicos/os", "ListarOS", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+def os_detalhar(numero: int):
+    return api_call("servicos/os", "ConsultarOS", [
+        {"nCodOS": numero}
+    ])
