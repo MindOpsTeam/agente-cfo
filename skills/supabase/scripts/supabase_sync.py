@@ -2,37 +2,49 @@
 """
 supabase_sync.py — Daemon de sincronização de projetos Supabase.
 
+Sprint 28 fix: usa mcp.servers.<name> via `openclaw config set` (caminho canônico).
+NUNCA escreve openclaw.json diretamente — usa somente o CLI do OpenClaw.
+
 Loop a cada SUPABASE_SYNC_INTERVAL_MIN (default: 5 min):
-  1. Busca projetos ativos via edge function supabase-projects-vps-list
-     (que descriptografa a service_role_key em runtime).
-  2. Gera bloco mcpServers para cada projeto.
-  3. Diff com o estado atual de ~/.openclaw/openclaw.json.
-  4. Aplica mudanças via `openclaw config set/unset mcpServers.<slug>`.
-  5. Se houve mudança, reinicia o openclaw-gateway.
+  1. GET /supabase-projects-vps-list (X-Panel-Token + X-Hooks-Token)
+  2. Compara projetos ativos com o que está registrado em mcp.servers
+  3. Registra novos (via mcp_manager.register_mcp)
+  4. Remove os que foram desativados/removidos do painel
+  5. Reinicia gateway somente se houve mudança real
 
 Logs: ~/.agente-cfo/logs/supabase-sync.log
+      ~/.agente-cfo/logs/mcp-sync.log (via mcp_manager)
 Env:  PANEL_BASE_URL, PANEL_TOKEN, HOOKS_TOKEN, SUPABASE_SYNC_INTERVAL_MIN
 """
 import json
 import os
-import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 ENV_FILE = Path.home() / ".agente-cfo" / ".env"
 LOG_FILE = Path.home() / ".agente-cfo" / "logs" / "supabase-sync.log"
-OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
 
 INTERVAL_MINUTES = int(os.environ.get("SUPABASE_SYNC_INTERVAL_MIN", "5"))
 INTERVAL_SECONDS = INTERVAL_MINUTES * 60
 
-# Prefixo das chaves gerenciadas por este daemon (não apaga outras entradas)
 SUPABASE_KEY_PREFIX = "supabase_"
+
+# Adiciona scripts/ de agente-cfo ao path pra importar mcp_manager
+_lib_dir = str(Path(__file__).parent.parent.parent / "agente-cfo" / "scripts")
+if _lib_dir not in sys.path:
+    sys.path.insert(0, _lib_dir)
+
+from mcp_manager import (  # type: ignore
+    register_mcp,
+    unregister_mcp,
+    list_registered_mcps,
+    restart_gateway_if_needed,
+)
 
 
 # ── Logging ───────────────────────────────────────────────────────────────────
@@ -55,21 +67,16 @@ def load_env() -> None:
     if not ENV_FILE.exists():
         return
     with open(ENV_FILE) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, _, v = line.partition("=")
+        for raw in f:
+            raw = raw.strip()
+            if raw and not raw.startswith("#") and "=" in raw:
+                k, _, v = raw.partition("=")
                 os.environ.setdefault(k.strip(), v.strip())
 
 
-# ── Edge function call ────────────────────────────────────────────────────────
+# ── Fetch projetos ────────────────────────────────────────────────────────────
 
-def fetch_projects() -> list[dict]:
-    """
-    GET /supabase-projects-vps-list
-    Auth: X-Panel-Token + X-Hooks-Token
-    Returns: list of { id, name, slug?, project_url, service_role_key, active }
-    """
+def fetch_projects() -> list:
     panel_base = os.environ.get("PANEL_BASE_URL", "").rstrip("/")
     panel_token = os.environ.get("PANEL_TOKEN", "")
     hooks_token = os.environ.get("HOOKS_TOKEN", "")
@@ -85,12 +92,11 @@ def fetch_projects() -> list[dict]:
         "Accept": "application/json",
     }
     req = urllib.request.Request(url, headers=headers, method="GET")
-
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read().decode())
             projects = data if isinstance(data, list) else data.get("projects", [])
-            log(f"[fetch] {len(projects)} projeto(s) recebido(s) do painel")
+            log(f"[fetch] {len(projects)} projeto(s) recebido(s)")
             return projects
     except urllib.error.HTTPError as e:
         body = e.read().decode()[:300]
@@ -101,141 +107,64 @@ def fetch_projects() -> list[dict]:
         return []
 
 
-# ── openclaw.json manipulation ────────────────────────────────────────────────
+# ── Sync ──────────────────────────────────────────────────────────────────────
 
-def read_openclaw_config() -> dict:
-    """Lê ~/.openclaw/openclaw.json. Retorna {} se não existir ou for inválido."""
-    if not OPENCLAW_CONFIG.exists():
-        return {}
-    try:
-        return json.loads(OPENCLAW_CONFIG.read_text())
-    except Exception as e:
-        log(f"[config] Erro ao ler openclaw.json: {e}")
-        return {}
+def sync() -> None:
+    from render_mcp_config import desired_mcp_map, project_mcp_name  # type: ignore
 
-
-def write_openclaw_config(config: dict) -> None:
-    """Escreve ~/.openclaw/openclaw.json atomicamente."""
-    OPENCLAW_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    tmp = OPENCLAW_CONFIG.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(config, indent=2, ensure_ascii=False))
-    tmp.replace(OPENCLAW_CONFIG)
-
-
-def get_current_supabase_entries(config: dict) -> dict:
-    """Extrai as entradas supabase_* do mcpServers."""
-    mcp_servers = config.get("mcpServers", {})
-    return {
-        k: v
-        for k, v in mcp_servers.items()
-        if k.startswith(SUPABASE_KEY_PREFIX)
-    }
-
-
-# ── MCP config rendering ──────────────────────────────────────────────────────
-
-# Importa render_mcp_block do módulo irmão
-_scripts_dir = str(Path(__file__).parent)
-if _scripts_dir not in sys.path:
-    sys.path.insert(0, _scripts_dir)
-from render_mcp_config import render_mcp_block  # type: ignore
-
-
-# ── Gateway restart ───────────────────────────────────────────────────────────
-
-def restart_gateway() -> None:
-    """Reinicia o openclaw-gateway via systemctl (se disponível) ou openclaw CLI."""
-    # Tenta systemctl primeiro (VPS Linux)
-    try:
-        result = subprocess.run(
-            ["systemctl", "restart", "openclaw-gateway"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0:
-            log("[gateway] openclaw-gateway reiniciado via systemctl")
-            return
-        log(f"[gateway] systemctl restart saiu com {result.returncode}: {result.stderr[:100]}")
-    except FileNotFoundError:
-        pass  # Não tem systemctl (macOS dev)
-    except Exception as e:
-        log(f"[gateway] Erro systemctl: {e}")
-
-    # Fallback: openclaw gateway restart
-    try:
-        result = subprocess.run(
-            ["openclaw", "gateway", "restart"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode == 0:
-            log("[gateway] openclaw-gateway reiniciado via CLI")
-        else:
-            log(f"[gateway] openclaw gateway restart falhou: {result.stderr[:100]}")
-    except FileNotFoundError:
-        log("[gateway] openclaw não encontrado no PATH — restart manual necessário")
-    except Exception as e:
-        log(f"[gateway] Erro CLI: {e}")
-
-
-# ── Main sync logic ───────────────────────────────────────────────────────────
-
-def sync() -> bool:
-    """
-    Executa um ciclo de sync.
-    Returns: True se houve mudança e o gateway foi reiniciado.
-    """
-    # 1. Busca projetos
     projects = fetch_projects()
+    desired = desired_mcp_map(projects)      # { "supabase_xxx": entry }
 
-    # 2. Gera bloco desejado (só ativos)
-    desired: dict = render_mcp_block(projects)
+    # MCPs supabase já registrados no OpenClaw
+    current_all = list_registered_mcps()
+    current_supabase = {k for k in current_all if k.startswith(SUPABASE_KEY_PREFIX)}
 
-    # 3. Lê config atual
-    config = read_openclaw_config()
-    current_supabase = get_current_supabase_entries(config)
+    any_change = False
 
-    # 4. Diff
-    added = {k: v for k, v in desired.items() if k not in current_supabase or current_supabase[k] != v}
-    removed = {k for k in current_supabase if k not in desired}
+    # 1. Registra / atualiza novos
+    for mcp_name, entry in desired.items():
+        changed = register_mcp(
+            name=mcp_name,
+            command=entry["command"],
+            args=entry.get("args", []),
+            env=entry.get("env", {}),
+            log_fn=log,
+        )
+        if changed:
+            any_change = True
 
-    if not added and not removed:
-        log("[sync] Nenhuma mudança — mcpServers Supabase já atualizados")
-        return False
+    # 2. Remove os que sumiram do painel (inativados ou deletados)
+    to_remove = current_supabase - set(desired.keys())
+    for mcp_name in to_remove:
+        removed = unregister_mcp(mcp_name, log_fn=log)
+        if removed:
+            log(f"[sync] Removeu MCP '{mcp_name}' (projeto inativado/deletado)")
+            any_change = True
 
-    # 5. Aplica mudanças no config
-    if "mcpServers" not in config:
-        config["mcpServers"] = {}
+    if not any_change:
+        log("[sync] Nenhuma mudança nos MCP servers Supabase")
 
-    for key, entry in added.items():
-        config["mcpServers"][key] = entry
-        log(f"[sync] + {key} ({entry['env']['SUPABASE_URL']})")
-
-    for key in removed:
-        del config["mcpServers"][key]
-        log(f"[sync] - {key} (projeto removido/inativado)")
-
-    write_openclaw_config(config)
-    log(f"[sync] openclaw.json atualizado (+{len(added)} -{len(removed)} projetos Supabase)")
-
-    # 6. Restart gateway
-    restart_gateway()
-    return True
+    restart_gateway_if_needed(any_change, log_fn=log)
 
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
+# Adiciona scripts/ local ao path pra importar render_mcp_config
+_local_dir = str(Path(__file__).parent)
+if _local_dir not in sys.path:
+    sys.path.insert(0, _local_dir)
+
+
 def run_loop() -> None:
     load_env()
 
-    # Valida envs obrigatórias
     missing = [k for k in ("PANEL_BASE_URL", "PANEL_TOKEN", "HOOKS_TOKEN") if not os.environ.get(k)]
     if missing:
-        log(f"[startup] ERRO: variáveis obrigatórias não configuradas: {', '.join(missing)}")
-        log("[startup] Configure em ~/.agente-cfo/.env e reinicie.")
+        log(f"[startup] ERRO: {', '.join(missing)} não configurados")
         sys.exit(1)
 
-    log("supabase_sync.py started (Sprint 25)")
-    log(f"Intervalo de sync: {INTERVAL_MINUTES} minutos")
-    log(f"Panel base URL: {os.environ['PANEL_BASE_URL']}")
+    log("supabase_sync.py started (Sprint 28 — mcp.servers canônico)")
+    log(f"Intervalo: {INTERVAL_MINUTES} min | Panel: {os.environ['PANEL_BASE_URL']}")
 
     while True:
         log("--- Início do ciclo supabase-sync ---")

@@ -1,23 +1,27 @@
 #!/usr/bin/env python3
 """
-Smoke test do supabase_sync.py + render_mcp_config.py.
+Smoke test da skill supabase (Sprint 28).
+Valida render_mcp_config, mcp_manager (via mocked openclaw), supabase_sync.
 Não precisa de credenciais reais nem hit na API.
 """
 import json
-import sys
 import os
+import sys
 from pathlib import Path
 
-# Adiciona scripts/ ao path
 SCRIPTS_DIR = Path(__file__).parent.parent / "scripts"
+AGENTE_CFO_SCRIPTS = Path(__file__).parent.parent.parent / "agente-cfo" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(AGENTE_CFO_SCRIPTS))
 
 
-# ── 1. Import sem erros ───────────────────────────────────────────────────────
+# ── 1. Imports ────────────────────────────────────────────────────────────────
 def test_imports():
-    from render_mcp_config import slugify, render_mcp_entry, render_mcp_block
-    print("✓ render_mcp_config importado com sucesso")
-    return slugify, render_mcp_entry, render_mcp_block
+    from render_mcp_config import slugify, project_mcp_name, project_mcp_entry, desired_mcp_map
+    import mcp_manager as mm
+    import supabase_sync as ss
+    print("✓ render_mcp_config, mcp_manager, supabase_sync importados")
+    return slugify, project_mcp_name, project_mcp_entry, desired_mcp_map, mm, ss
 
 
 # ── 2. slugify ────────────────────────────────────────────────────────────────
@@ -38,108 +42,75 @@ def test_slugify(slugify):
     print(f"✓ slugify: {len(cases)} casos OK")
 
 
-# ── 3. render_mcp_entry ───────────────────────────────────────────────────────
-def test_render_entry(render_mcp_entry):
-    project = {
-        "id": "abc",
-        "name": "Minha Empresa",
-        "project_url": "https://xyzabc.supabase.co",
-        "service_role_key": "eyJtest.key",
-        "active": True,
-    }
-    result = render_mcp_entry(project)
-    assert isinstance(result, dict), "Deve retornar dict"
-    assert "supabase_minha_empresa" in result
-    entry = result["supabase_minha_empresa"]
+# ── 3. project_mcp_name ───────────────────────────────────────────────────────
+def test_mcp_name(project_mcp_name):
+    p = {"name": "Minha Empresa", "project_url": "u", "service_role_key": "k", "active": True}
+    assert project_mcp_name(p) == "supabase_minha_empresa"
+    print("✓ project_mcp_name OK")
+
+
+# ── 4. project_mcp_entry ──────────────────────────────────────────────────────
+def test_mcp_entry(project_mcp_entry):
+    p = {"name": "x", "project_url": "https://abc.supabase.co", "service_role_key": "eyJ.test", "active": True}
+    entry = project_mcp_entry(p)
     assert entry["command"] == "npx"
     assert "-y" in entry["args"]
     assert "@supabase/mcp-server-supabase@latest" in entry["args"]
-    assert entry["env"]["SUPABASE_URL"] == "https://xyzabc.supabase.co"
-    assert entry["env"]["SUPABASE_SERVICE_ROLE_KEY"] == "eyJtest.key"
-    # Deve ser JSON-serializável
-    json.dumps(result)
-    print("✓ render_mcp_entry: estrutura correta, JSON-serializável")
+    assert entry["env"]["SUPABASE_URL"] == "https://abc.supabase.co"
+    assert entry["env"]["SUPABASE_SERVICE_ROLE_KEY"] == "eyJ.test"
+    json.dumps(entry)  # serializável
+    print("✓ project_mcp_entry OK")
 
 
-# ── 4. render_mcp_block com ativos e inativos ─────────────────────────────────
-def test_render_block(render_mcp_block):
+# ── 5. desired_mcp_map filtra inativos ───────────────────────────────────────
+def test_desired_map(desired_mcp_map):
     projects = [
-        {
-            "id": "1",
-            "name": "ERP Produção",
-            "project_url": "https://erp.supabase.co",
-            "service_role_key": "key1",
-            "active": True,
-        },
-        {
-            "id": "2",
-            "name": "Staging",
-            "project_url": "https://staging.supabase.co",
-            "service_role_key": "key2",
-            "active": False,  # não deve aparecer
-        },
-        {
-            "id": "3",
-            "name": "Analytics",
-            "project_url": "https://analytics.supabase.co",
-            "service_role_key": "key3",
-            "active": True,
-        },
+        {"name": "Prod", "project_url": "https://p.supabase.co", "service_role_key": "k1", "active": True},
+        {"name": "Staging", "project_url": "https://s.supabase.co", "service_role_key": "k2", "active": False},
     ]
-    block = render_mcp_block(projects)
-    assert "supabase_erp_producao" in block
-    assert "supabase_analytics" in block
-    assert "supabase_staging" not in block, "Inativo não deve aparecer"
-    assert len(block) == 2
-    json.dumps(block)  # JSON-serializável
-    print("✓ render_mcp_block: filtra inativos, 2 ativos → 2 entradas")
+    m = desired_mcp_map(projects)
+    assert "supabase_prod" in m
+    assert "supabase_staging" not in m
+    assert len(m) == 1
+    print("✓ desired_mcp_map: filtra inativos OK")
 
 
-# ── 5. render_mcp_block vazio não crasha ─────────────────────────────────────
-def test_empty_block(render_mcp_block):
-    block = render_mcp_block([])
-    assert block == {}
-    block = render_mcp_block([{"id": "x", "name": "X", "project_url": "u", "service_role_key": "k", "active": False}])
-    assert block == {}
-    print("✓ render_mcp_block: lista vazia / só inativos → {}")
+# ── 6. mcp_manager: hash estável ──────────────────────────────────────────────
+def test_hash_stable(mm):
+    h1 = mm.mcp_state_hash("omie", "python3", ["/path/to/mcp.py"], {"K": "v"})
+    h2 = mm.mcp_state_hash("omie", "python3", ["/path/to/mcp.py"], {"K": "v"})
+    h3 = mm.mcp_state_hash("omie", "python3", ["/path/to/mcp.py"], {"K": "different"})
+    assert h1 == h2, "Hash deve ser determinístico"
+    assert h1 != h3, "Hash deve mudar se env muda"
+    print("✓ mcp_state_hash: estável e sensível a mudanças")
 
 
-# ── 6. supabase_sync: import + funções auxiliares ────────────────────────────
-def test_sync_import():
-    import supabase_sync as ss
+# ── 7. supabase_sync: funções presentes ──────────────────────────────────────
+def test_sync_api(ss):
     assert hasattr(ss, "sync")
     assert hasattr(ss, "fetch_projects")
-    assert hasattr(ss, "read_openclaw_config")
-    assert hasattr(ss, "get_current_supabase_entries")
-    print("✓ supabase_sync importado, funções presentes")
+    assert hasattr(ss, "load_env")
+    print("✓ supabase_sync: funções principais presentes")
 
 
-# ── 7. get_current_supabase_entries filtra corretamente ──────────────────────
-def test_filter_entries():
-    import supabase_sync as ss
-    config = {
-        "mcpServers": {
-            "supabase_erp": {"command": "npx"},
-            "supabase_staging": {"command": "npx"},
-            "omie": {"command": "python3"},  # não é supabase
-        }
-    }
-    result = ss.get_current_supabase_entries(config)
-    assert "supabase_erp" in result
-    assert "supabase_staging" in result
-    assert "omie" not in result
-    assert len(result) == 2
-    print("✓ get_current_supabase_entries: filtra apenas supabase_*")
+# ── 8. fetch_projects sem env → [] ───────────────────────────────────────────
+def test_fetch_no_env(ss):
+    for k in ("PANEL_BASE_URL", "PANEL_TOKEN", "HOOKS_TOKEN"):
+        os.environ.pop(k, None)
+    result = ss.fetch_projects()
+    assert result == []
+    print("✓ fetch_projects retorna [] sem env vars")
 
 
 # ── Runner ────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print("Rodando smoke tests do supabase_sync...\n")
-    slugify, render_entry, render_block = test_imports()
+    print("Rodando smoke tests do supabase_sync (Sprint 28)...\n")
+    slugify, mcp_name, mcp_entry, desired_map, mm, ss = test_imports()
     test_slugify(slugify)
-    test_render_entry(render_entry)
-    test_render_block(render_block)
-    test_empty_block(render_block)
-    test_sync_import()
-    test_filter_entries()
+    test_mcp_name(mcp_name)
+    test_mcp_entry(mcp_entry)
+    test_desired_map(desired_map)
+    test_hash_stable(mm)
+    test_sync_api(ss)
+    test_fetch_no_env(ss)
     print("\n✅ Todos os smoke tests passaram!")
