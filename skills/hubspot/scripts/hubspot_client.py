@@ -362,6 +362,393 @@ class HubSpotClient(BaseCRMClient):
         results = data.get("results", []) if isinstance(data, dict) else []
         return {"items": results, "total": len(results)}
 
+    # ── Tickets (extend) ──────────────────────────────────────────────────
+
+    def update_ticket(self, ticket_id: str, properties: dict) -> dict:
+        return self._update_object("tickets", ticket_id, properties)
+
+    def delete_ticket(self, ticket_id: str) -> dict:
+        return self._delete_object("tickets", ticket_id)
+
+    def search_tickets(self, query: str, limit: int = 50) -> dict:
+        body = {"query": query, "limit": limit}
+        raw = self._post_json("crm/v3/objects/tickets/search", body)
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": raw.get("total", len(results)) if isinstance(raw, dict) else len(results)}
+
+    def batch_create_tickets(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/tickets/batch/create", {"inputs": inputs})
+
+    def batch_update_tickets(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/tickets/batch/update", {"inputs": inputs})
+
+    def batch_read_tickets(self, inputs: list, properties: list = None) -> dict:
+        body = {"inputs": inputs}
+        if properties: body["properties"] = properties
+        return self._post_json("crm/v3/objects/tickets/batch/read", body)
+
+    def batch_archive_tickets(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/tickets/batch/archive", {"inputs": inputs})
+
+    # ── Line Items (extend) ───────────────────────────────────────────────
+
+    def get_line_item(self, id: str) -> dict:
+        return self._get_object("line_items", id, properties="name,quantity,price,amount,hs_product_id")
+
+    def create_line_item(self, properties: dict) -> dict:
+        return self._create_object("line_items", properties)
+
+    def update_line_item(self, id: str, properties: dict) -> dict:
+        return self._update_object("line_items", id, properties)
+
+    def delete_line_item(self, id: str) -> dict:
+        return self._delete_object("line_items", id)
+
+    def batch_create_line_items(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/line_items/batch/create", {"inputs": inputs})
+
+    def batch_update_line_items(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/line_items/batch/update", {"inputs": inputs})
+
+    def batch_archive_line_items(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/line_items/batch/archive", {"inputs": inputs})
+
+    # ── Quotes ────────────────────────────────────────────────────────────
+
+    def list_quotes(self, limit: int = 50) -> dict:
+        return self._list_objects("quotes", properties="hs_title,hs_expiration_date,hs_status,hs_quote_amount", limit=limit)
+
+    def get_quote(self, id: str) -> dict:
+        return self._get_object("quotes", id)
+
+    def create_quote(self, properties: dict) -> dict:
+        return self._create_object("quotes", properties)
+
+    def update_quote(self, id: str, properties: dict) -> dict:
+        return self._update_object("quotes", id, properties)
+
+    def delete_quote(self, id: str) -> dict:
+        return self._delete_object("quotes", id)
+
+    # ── Associations ──────────────────────────────────────────────────────
+
+    def list_associations(self, from_type: str, from_id: str, to_type: str) -> dict:
+        raw = self._get(f"crm/v4/objects/{from_type}/{from_id}/associations/{to_type}")
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": len(results)}
+
+    def create_association(self, from_type: str, from_id: str, to_type: str, to_id: str, association_type_id: int) -> dict:
+        body = [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": association_type_id}]
+        raw = http_request("PUT", f"{self.BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}",
+                          headers=self.headers, body=_json.dumps(body).encode())
+        return {"success": True, "action": "create_association", "raw": raw}
+
+    def delete_association(self, from_type: str, from_id: str, to_type: str, to_id: str) -> dict:
+        url = f"{self.BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}"
+        http_request("DELETE", url, headers=self.headers)
+        return {"success": True, "action": "delete_association"}
+
+    def batch_create_associations(self, from_type: str, to_type: str, inputs: list) -> dict:
+        return self._post_json(f"crm/v4/associations/{from_type}/{to_type}/batch/create", {"inputs": inputs})
+
+    def batch_delete_associations(self, from_type: str, to_type: str, inputs: list) -> dict:
+        return self._post_json(f"crm/v4/associations/{from_type}/{to_type}/batch/archive", {"inputs": inputs})
+
+    def batch_read_associations(self, from_type: str, to_type: str, inputs: list) -> dict:
+        return self._post_json(f"crm/v4/associations/{from_type}/{to_type}/batch/read", {"inputs": inputs})
+
+    def list_association_labels(self, from_type: str, to_type: str) -> dict:
+        raw = self._get(f"crm/v4/associations/{from_type}/{to_type}/labels")
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": len(results)}
+
+    def create_association_label(self, from_type: str, to_type: str, label: str, name: str) -> dict:
+        raw = self._post_json(f"crm/v4/associations/{from_type}/{to_type}/labels", {"label": label, "name": name})
+        return {"success": True, "raw": raw}
+
+    def delete_association_label(self, from_type: str, to_type: str, label_id: int) -> dict:
+        url = f"{self.BASE_URL}/crm/v4/associations/{from_type}/{to_type}/labels/{label_id}"
+        http_request("DELETE", url, headers=self.headers)
+        return {"success": True, "action": "delete_association_label"}
+
+    # ── Properties (extend) ───────────────────────────────────────────────
+
+    def get_property(self, object_type: str, property_name: str) -> dict:
+        return self._get(f"crm/v3/properties/{object_type}/{property_name}")
+
+    def create_property(self, object_type: str, property_def: dict) -> dict:
+        return self._post_json(f"crm/v3/properties/{object_type}", property_def)
+
+    def update_property(self, object_type: str, property_name: str, property_def: dict) -> dict:
+        return self._patch(f"crm/v3/properties/{object_type}/{property_name}", property_def)
+
+    def delete_property(self, object_type: str, property_name: str) -> dict:
+        url = f"{self.BASE_URL}/crm/v3/properties/{object_type}/{property_name}"
+        http_request("DELETE", url, headers=self.headers)
+        return {"success": True, "action": "delete_property", "property": property_name}
+
+    def list_property_groups(self, object_type: str) -> dict:
+        raw = self._get(f"crm/v3/properties/{object_type}/groups")
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": len(results)}
+
+    def create_property_group(self, object_type: str, name: str, label: str) -> dict:
+        return self._post_json(f"crm/v3/properties/{object_type}/groups", {"name": name, "label": label})
+
+    def update_property_group(self, object_type: str, group_name: str, body: dict) -> dict:
+        return self._patch(f"crm/v3/properties/{object_type}/groups/{group_name}", body)
+
+    def delete_property_group(self, object_type: str, group_name: str) -> dict:
+        url = f"{self.BASE_URL}/crm/v3/properties/{object_type}/groups/{group_name}"
+        http_request("DELETE", url, headers=self.headers)
+        return {"success": True, "action": "delete_property_group"}
+
+    # ── CRM Search (generic) ─────────────────────────────────────────────
+
+    def crm_search(self, object_type: str, query: str = "", filters: list = None, sorts: list = None, properties: list = None, limit: int = 50, after: str = None) -> dict:
+        body = {"limit": limit}
+        if query: body["query"] = query
+        if filters: body["filterGroups"] = [{"filters": filters}]
+        if sorts: body["sorts"] = sorts
+        if properties: body["properties"] = properties
+        if after: body["after"] = after
+        raw = self._post_json(f"crm/v3/objects/{object_type}/search", body)
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": raw.get("total", len(results)) if isinstance(raw, dict) else len(results), "paging": raw.get("paging") if isinstance(raw, dict) else None}
+
+    # ── Owners (extend) ──────────────────────────────────────────────────
+
+    def get_owner(self, owner_id: str) -> dict:
+        return self._get(f"crm/v3/owners/{owner_id}")
+
+    # ── Contacts batch ────────────────────────────────────────────────────
+
+    def batch_create_contacts(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/contacts/batch/create", {"inputs": inputs})
+
+    def batch_update_contacts(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/contacts/batch/update", {"inputs": inputs})
+
+    def batch_read_contacts(self, inputs: list, properties: list = None) -> dict:
+        body = {"inputs": inputs}
+        if properties: body["properties"] = properties
+        return self._post_json("crm/v3/objects/contacts/batch/read", body)
+
+    def batch_archive_contacts(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/contacts/batch/archive", {"inputs": inputs})
+
+    # ── Companies batch ───────────────────────────────────────────────────
+
+    def batch_create_companies(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/companies/batch/create", {"inputs": inputs})
+
+    def batch_update_companies(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/companies/batch/update", {"inputs": inputs})
+
+    def batch_archive_companies(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/companies/batch/archive", {"inputs": inputs})
+
+    # ── Deals (extend) ────────────────────────────────────────────────────
+
+    def delete_deal(self, deal_id: str) -> dict:
+        return self._delete_object("deals", deal_id)
+
+    def batch_create_deals(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/deals/batch/create", {"inputs": inputs})
+
+    def batch_update_deals(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/deals/batch/update", {"inputs": inputs})
+
+    def batch_archive_deals(self, inputs: list) -> dict:
+        return self._post_json("crm/v3/objects/deals/batch/archive", {"inputs": inputs})
+
+    # ── Engagements (extend) ──────────────────────────────────────────────
+
+    def get_call(self, id: str) -> dict:
+        return self._get_object("calls", id)
+
+    def update_call(self, id: str, properties: dict) -> dict:
+        return self._update_object("calls", id, properties)
+
+    def delete_call(self, id: str) -> dict:
+        return self._delete_object("calls", id)
+
+    def get_email(self, id: str) -> dict:
+        return self._get_object("emails", id)
+
+    def create_email(self, properties: dict, associations: list = None) -> dict:
+        body = {"properties": properties}
+        if associations: body["associations"] = associations
+        raw = self._post_json("crm/v3/objects/emails", body)
+        return {"success": True, "action": "create_email", "id": str(raw.get("id", "") if isinstance(raw, dict) else ""), "raw": raw}
+
+    def update_email(self, id: str, properties: dict) -> dict:
+        return self._update_object("emails", id, properties)
+
+    def delete_email(self, id: str) -> dict:
+        return self._delete_object("emails", id)
+
+    def get_meeting(self, id: str) -> dict:
+        return self._get_object("meetings", id)
+
+    def create_meeting(self, properties: dict, associations: list = None) -> dict:
+        body = {"properties": properties}
+        if associations: body["associations"] = associations
+        raw = self._post_json("crm/v3/objects/meetings", body)
+        return {"success": True, "action": "create_meeting", "id": str(raw.get("id", "") if isinstance(raw, dict) else ""), "raw": raw}
+
+    def update_meeting(self, id: str, properties: dict) -> dict:
+        return self._update_object("meetings", id, properties)
+
+    def delete_meeting(self, id: str) -> dict:
+        return self._delete_object("meetings", id)
+
+    def get_note(self, id: str) -> dict:
+        return self._get_object("notes", id)
+
+    def update_note(self, id: str, properties: dict) -> dict:
+        return self._update_object("notes", id, properties)
+
+    def delete_note(self, id: str) -> dict:
+        return self._delete_object("notes", id)
+
+    def get_task(self, id: str) -> dict:
+        return self._get_object("tasks", id)
+
+    def update_task(self, id: str, properties: dict) -> dict:
+        return self._update_object("tasks", id, properties)
+
+    def delete_task(self, id: str) -> dict:
+        return self._delete_object("tasks", id)
+
+    # ── Products ──────────────────────────────────────────────────────────
+
+    def list_products(self, limit: int = 50) -> dict:
+        return self._list_objects("products", properties="name,price,description,hs_sku", limit=limit)
+
+    def get_product(self, id: str) -> dict:
+        return self._get_object("products", id)
+
+    def create_product(self, properties: dict) -> dict:
+        return self._create_object("products", properties)
+
+    def update_product(self, id: str, properties: dict) -> dict:
+        return self._update_object("products", id, properties)
+
+    def delete_product(self, id: str) -> dict:
+        return self._delete_object("products", id)
+
+    # ── Forms ─────────────────────────────────────────────────────────────
+
+    def list_forms(self) -> dict:
+        raw = self._get("forms/v2/forms")
+        return {"items": raw if isinstance(raw, list) else [], "total": len(raw) if isinstance(raw, list) else 0}
+
+    def get_form(self, form_id: str) -> dict:
+        return self._get(f"forms/v2/forms/{form_id}")
+
+    # ── Marketing Emails ──────────────────────────────────────────────────
+
+    def list_marketing_emails(self, limit: int = 50) -> dict:
+        raw = self._get(f"marketing/v3/emails?limit={limit}")
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": raw.get("total", len(results)) if isinstance(raw, dict) else len(results)}
+
+    def get_marketing_email(self, email_id: str) -> dict:
+        return self._get(f"marketing/v3/emails/{email_id}")
+
+    # ── Feedback Submissions ──────────────────────────────────────────────
+
+    def list_feedback_submissions(self, limit: int = 50) -> dict:
+        return self._list_objects("feedback_submissions", limit=limit)
+
+    def get_feedback_submission(self, id: str) -> dict:
+        return self._get_object("feedback_submissions", id)
+
+    # ── Custom Objects ────────────────────────────────────────────────────
+
+    def list_custom_object_schemas(self) -> dict:
+        raw = self._get("crm/v3/schemas")
+        results = raw.get("results", []) if isinstance(raw, dict) else []
+        return {"items": results, "total": len(results)}
+
+    def get_custom_object_schema(self, object_type: str) -> dict:
+        return self._get(f"crm/v3/schemas/{object_type}")
+
+    def list_custom_objects(self, object_type: str, limit: int = 50) -> dict:
+        return self._list_objects(object_type, limit=limit)
+
+    def get_custom_object(self, object_type: str, id: str) -> dict:
+        return self._get_object(object_type, id)
+
+    def create_custom_object(self, object_type: str, properties: dict) -> dict:
+        return self._create_object(object_type, properties)
+
+    # ── Deal Stages ───────────────────────────────────────────────────────
+
+    def list_deal_stages(self) -> dict:
+        data = self._get("crm/v3/pipelines/deals")
+        stages = []
+        results = data.get("results", []) if isinstance(data, dict) else []
+        for pipeline in results:
+            p_id = pipeline.get("id", "")
+            p_label = pipeline.get("label", "")
+            for stage in pipeline.get("stages", []):
+                stages.append({
+                    "pipeline_id": p_id,
+                    "pipeline_label": p_label,
+                    "stage_id": stage.get("id", ""),
+                    "stage_label": stage.get("label", ""),
+                    "display_order": stage.get("displayOrder", 0),
+                })
+        return {"items": stages, "total": len(stages)}
+
+    # ── Pipelines (extend) ────────────────────────────────────────────────
+
+    def get_pipeline(self, object_type: str, pipeline_id: str) -> dict:
+        return self._get(f"crm/v3/pipelines/{object_type}/{pipeline_id}")
+
+    def create_pipeline(self, object_type: str, body: dict) -> dict:
+        return self._post_json(f"crm/v3/pipelines/{object_type}", body)
+
+    def update_pipeline(self, object_type: str, pipeline_id: str, body: dict) -> dict:
+        return self._patch(f"crm/v3/pipelines/{object_type}/{pipeline_id}", body)
+
+    def delete_pipeline(self, object_type: str, pipeline_id: str) -> dict:
+        url = f"{self.BASE_URL}/crm/v3/pipelines/{object_type}/{pipeline_id}"
+        http_request("DELETE", url, headers=self.headers)
+        return {"success": True, "action": "delete_pipeline", "id": pipeline_id}
+
+    def get_pipeline_stage(self, object_type: str, pipeline_id: str, stage_id: str) -> dict:
+        return self._get(f"crm/v3/pipelines/{object_type}/{pipeline_id}/stages/{stage_id}")
+
+    def create_pipeline_stage(self, object_type: str, pipeline_id: str, body: dict) -> dict:
+        return self._post_json(f"crm/v3/pipelines/{object_type}/{pipeline_id}/stages", body)
+
+    def update_pipeline_stage(self, object_type: str, pipeline_id: str, stage_id: str, body: dict) -> dict:
+        return self._patch(f"crm/v3/pipelines/{object_type}/{pipeline_id}/stages/{stage_id}", body)
+
+    def delete_pipeline_stage(self, object_type: str, pipeline_id: str, stage_id: str) -> dict:
+        url = f"{self.BASE_URL}/crm/v3/pipelines/{object_type}/{pipeline_id}/stages/{stage_id}"
+        http_request("DELETE", url, headers=self.headers)
+        return {"success": True, "action": "delete_pipeline_stage", "id": stage_id}
+
+    # ── Communications ────────────────────────────────────────────────────
+
+    def list_communications(self, limit: int = 50) -> dict:
+        return self._list_objects("communications", limit=limit)
+
+    def get_communication(self, id: str) -> dict:
+        return self._get_object("communications", id)
+
+    # ── Postal Mail ───────────────────────────────────────────────────────
+
+    def list_postal_mail(self, limit: int = 50) -> dict:
+        return self._list_objects("postal_mail", limit=limit)
+
+    def get_postal_mail(self, id: str) -> dict:
+        return self._get_object("postal_mail", id)
+
 
 if __name__ == "__main__":
     try:
