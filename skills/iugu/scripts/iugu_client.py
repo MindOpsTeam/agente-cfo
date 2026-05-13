@@ -222,6 +222,100 @@ class IuguClient(BaseCobrancaClient):
             "customer_id": customer_id,
         }
 
+    def _delete(self, path: str) -> dict:
+        url = f"{self.BASE_URL}/{path.lstrip('/')}"
+        return http_request("DELETE", url, headers=self.headers)
+
+    # ── Clientes ─────────────────────────────────────────────────────────────
+    def list_customers(self, limit=50, page=1, search=None):
+        start = (page - 1) * limit
+        params = f"limit={min(limit, 100)}&start={start}"
+        if search:
+            params += f"&query={search}"
+        return self._get("customers", params)
+
+    def create_customer(self, data: dict):
+        return self._post("customers", data)
+
+    def update_customer(self, id: str, data: dict):
+        return self._put(f"customers/{id}", data)
+
+    def delete_customer(self, id: str):
+        return self._delete(f"customers/{id}")
+
+    # ── Planos ───────────────────────────────────────────────────────────────
+    def list_plans(self, limit=50, page=1):
+        start = (page - 1) * limit
+        return self._get("plans", f"limit={min(limit, 100)}&start={start}")
+
+    def get_plan(self, id: str):
+        return self._get(f"plans/{id}")
+
+    def create_plan(self, data: dict):
+        return self._post("plans", data)
+
+    def update_plan(self, id: str, data: dict):
+        return self._put(f"plans/{id}", data)
+
+    def delete_plan(self, id: str):
+        return self._delete(f"plans/{id}")
+
+    # ── Assinaturas ──────────────────────────────────────────────────────────
+    def list_subscriptions(self, limit=50, page=1, customer_id=None):
+        start = (page - 1) * limit
+        params = f"limit={min(limit, 100)}&start={start}"
+        if customer_id:
+            params += f"&customer_id={customer_id}"
+        return self._get("subscriptions", params)
+
+    def get_subscription(self, id: str):
+        return self._get(f"subscriptions/{id}")
+
+    def create_subscription(self, data: dict):
+        return self._post("subscriptions", data)
+
+    def update_subscription(self, id: str, data: dict):
+        return self._put(f"subscriptions/{id}", data)
+
+    def suspend_subscription(self, id: str):
+        return self._post(f"subscriptions/{id}/suspend", {})
+
+    def activate_subscription(self, id: str):
+        return self._post(f"subscriptions/{id}/activate", {})
+
+    def delete_subscription(self, id: str):
+        return self._delete(f"subscriptions/{id}")
+
+    # ── Transferências ───────────────────────────────────────────────────────
+    def list_transfers(self, limit=50, page=1):
+        start = (page - 1) * limit
+        return self._get("transfers", f"limit={min(limit, 100)}&start={start}")
+
+    def create_transfer(self, data: dict):
+        return self._post("transfers", data)
+
+    # ── Extrato ──────────────────────────────────────────────────────────────
+    def get_financial_statement(self):
+        return self._get("financial_transaction_requests")
+
+    # ── Webhooks ─────────────────────────────────────────────────────────────
+    def list_webhooks(self):
+        return self._get("web_hooks")
+
+    def create_webhook(self, data: dict):
+        return self._post("web_hooks", data)
+
+    def delete_webhook(self, id: str):
+        return self._delete(f"web_hooks/{id}")
+
+    # ── Marketplace / Subcontas ──────────────────────────────────────────────
+    def list_marketplace_accounts(self, limit=50, page=1):
+        start = (page - 1) * limit
+        return self._get("marketplace", f"limit={min(limit, 100)}&start={start}")
+
+    def create_marketplace_account(self, data: dict):
+        return self._post("marketplace/create_account", data)
+
 
 if __name__ == "__main__":
     try:
