@@ -2,7 +2,7 @@
 
 Cada skill expõe um MCP server stdio (`mcp_server.py`) consumível por qualquer cliente MCP (Claude Code, OpenClaw, etc).
 
-**Última atualização:** Sprint 24 — 1280 tools totais (era 1084 no Sprint 23)
+**Última atualização:** Sprint 25 — 1279 tools (16 skills) + skill supabase orquestradora (projetos dinâmicos via painel)
 
 ## Como rodar
 
@@ -71,6 +71,34 @@ python3 skills/<nome>/mcp_server.py
 | Sprint 22 | **878** | 16/16 (+kommo do zero, 4 skills expandidas) |
 | Sprint 23 | **1084** | 16/16 (HubSpot 100% hubs, gaps Kommo/Pipedrive/Omie/Bling) |
 | Sprint 24 | **1280** | 16/16 (HubSpot 267→463 — 8 hubs novos: workflows v1, forms v3, sequences full, CMS source/templates/themes, analytics/events, OAuth/webhooks v3, settings full, KB/service hub, CRM extras) |
+
+---
+
+## Skill especial: Supabase (MCP orquestrador)
+
+A skill `supabase` **não é** um MCP server — ela **orquestra** MCPs externos.
+
+| Campo | Valor |
+|---|---|
+| Daemon | `skills/supabase/scripts/supabase_sync.py` |
+| Systemd | `cfo-supabase-sync.service` |
+| Intervalo | `SUPABASE_SYNC_INTERVAL_MIN` (default: 5 min) |
+| MCP spawned | `@supabase/mcp-server-supabase@latest` via `npx -y` |
+| Auth | `X-Panel-Token` + `X-Hooks-Token` |
+| Config gerada | Entradas `supabase_<slug>` em `~/.openclaw/openclaw.json` |
+
+Cada projeto Supabase ativo no painel vira um MCP server separado:
+```json
+"supabase_minha_empresa": {
+  "command": "npx",
+  "args": ["-y", "@supabase/mcp-server-supabase@latest"],
+  "env": {
+    "SUPABASE_URL": "https://xxx.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY": "<decrypted_at_edge_runtime>"
+  }
+}
+```
+A `service_role_key` é descriptografada pela edge function `supabase-projects-vps-list` em runtime e nunca fica em disco na VPS.
 
 ---
 
