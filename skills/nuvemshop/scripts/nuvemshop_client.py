@@ -269,6 +269,228 @@ class NuvemshopClient(BaseEcommerceClient):
         except Exception as e:
             return {"success": False, "action": "cancel_order", "id": id, "error": str(e)}
 
+    def _delete(self, path: str) -> dict:
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        return http_request("DELETE", url, headers=self.headers)
+
+    # ── Produtos (CRUD) ──────────────────────────────────────────────────────
+
+    def create_product(self, name: str, price: float, **kwargs) -> dict:
+        body = {"name": {"pt": name}, "variants": [{"price": str(price)}]}
+        if kwargs.get("sku"):
+            body["variants"][0]["sku"] = kwargs["sku"]
+        if kwargs.get("stock"):
+            body["variants"][0]["stock"] = kwargs["stock"]
+        if kwargs.get("description"):
+            body["description"] = {"pt": kwargs["description"]}
+        if kwargs.get("category_ids"):
+            body["categories"] = kwargs["category_ids"]
+        raw = self._post("products", body)
+        return {"success": True, "action": "create_product", "raw": raw}
+
+    def update_product(self, product_id: str, **kwargs) -> dict:
+        body = {}
+        if kwargs.get("name"):
+            body["name"] = {"pt": kwargs["name"]}
+        if kwargs.get("description"):
+            body["description"] = {"pt": kwargs["description"]}
+        if kwargs.get("published") is not None:
+            body["published"] = kwargs["published"]
+        raw = self._put(f"products/{product_id}", body)
+        return {"success": True, "action": "update_product", "product_id": product_id, "raw": raw}
+
+    def delete_product(self, product_id: str) -> dict:
+        try:
+            raw = self._delete(f"products/{product_id}")
+            return {"success": True, "action": "delete_product", "product_id": product_id, "raw": raw}
+        except Exception as e:
+            return {"success": False, "action": "delete_product", "product_id": product_id, "error": str(e)}
+
+    # ── Variantes ─────────────────────────────────────────────────────────────
+
+    def list_variants(self, product_id: str) -> dict:
+        data = self._get(f"products/{product_id}/variants")
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    # ── Categorias ────────────────────────────────────────────────────────────
+
+    def list_categories(self, limit: int = 50) -> dict:
+        params = f"per_page={min(limit, 200)}&page=1"
+        data = self._get("categories", params)
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    def get_category(self, category_id: str) -> dict:
+        data = self._get(f"categories/{category_id}")
+        if isinstance(data, list) and data:
+            data = data[0]
+        return data if isinstance(data, dict) else {}
+
+    def create_category(self, name: str, **kwargs) -> dict:
+        body: dict = {"name": {"pt": name}}
+        if kwargs.get("parent_id"):
+            body["parent"] = kwargs["parent_id"]
+        raw = self._post("categories", body)
+        return {"success": True, "action": "create_category", "raw": raw}
+
+    # ── Clientes ──────────────────────────────────────────────────────────────
+
+    def list_customers(self, limit: int = 50, since: str | None = None, q: str | None = None) -> dict:
+        params = f"per_page={min(limit, 200)}&page=1"
+        if since:
+            params += f"&created_at_min={since}T00:00:00-03:00"
+        if q:
+            params += f"&q={q}"
+        data = self._get("customers", params)
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    def get_customer(self, customer_id: str) -> dict:
+        data = self._get(f"customers/{customer_id}")
+        if isinstance(data, list) and data:
+            data = data[0]
+        return data if isinstance(data, dict) else {}
+
+    def create_customer(self, name: str, email: str, **kwargs) -> dict:
+        body: dict = {"name": name, "email": email}
+        if kwargs.get("phone"):
+            body["phone"] = kwargs["phone"]
+        if kwargs.get("identification"):
+            body["identification"] = kwargs["identification"]
+        raw = self._post("customers", body)
+        return {"success": True, "action": "create_customer", "raw": raw}
+
+    def update_customer(self, customer_id: str, **kwargs) -> dict:
+        body = {}
+        for field in ("name", "email", "phone", "identification", "note"):
+            if kwargs.get(field):
+                body[field] = kwargs[field]
+        raw = self._put(f"customers/{customer_id}", body)
+        return {"success": True, "action": "update_customer", "customer_id": customer_id, "raw": raw}
+
+    # ── Pedidos (extras) ──────────────────────────────────────────────────────
+
+    def update_order(self, order_id: str, **kwargs) -> dict:
+        body = {}
+        if kwargs.get("owner"):
+            body["owner"] = kwargs["owner"]
+        if kwargs.get("note"):
+            body["note"] = kwargs["note"]
+        if kwargs.get("shipping_status"):
+            body["shipping_status"] = kwargs["shipping_status"]
+        raw = self._put(f"orders/{order_id}", body)
+        return {"success": True, "action": "update_order", "order_id": order_id, "raw": raw}
+
+    # ── Cupons ────────────────────────────────────────────────────────────────
+
+    def list_coupons(self, limit: int = 50) -> dict:
+        params = f"per_page={min(limit, 200)}&page=1"
+        data = self._get("coupons", params)
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    def get_coupon(self, coupon_id: str) -> dict:
+        data = self._get(f"coupons/{coupon_id}")
+        if isinstance(data, list) and data:
+            data = data[0]
+        return data if isinstance(data, dict) else {}
+
+    def create_coupon(self, code: str, value: float, coupon_type: str = "percentage", **kwargs) -> dict:
+        body: dict = {"code": code, "value": str(value), "type": coupon_type}
+        if kwargs.get("min_price"):
+            body["min_price"] = str(kwargs["min_price"])
+        if kwargs.get("max_uses"):
+            body["max_uses"] = kwargs["max_uses"]
+        if kwargs.get("start_date"):
+            body["start_date"] = kwargs["start_date"]
+        if kwargs.get("end_date"):
+            body["end_date"] = kwargs["end_date"]
+        if kwargs.get("categories"):
+            body["categories"] = kwargs["categories"]
+        raw = self._post("coupons", body)
+        return {"success": True, "action": "create_coupon", "raw": raw}
+
+    def delete_coupon(self, coupon_id: str) -> dict:
+        try:
+            raw = self._delete(f"coupons/{coupon_id}")
+            return {"success": True, "action": "delete_coupon", "coupon_id": coupon_id, "raw": raw}
+        except Exception as e:
+            return {"success": False, "action": "delete_coupon", "coupon_id": coupon_id, "error": str(e)}
+
+    # ── Páginas ───────────────────────────────────────────────────────────────
+
+    def list_pages(self, limit: int = 50) -> dict:
+        params = f"per_page={min(limit, 200)}&page=1"
+        data = self._get("pages", params)
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    def get_page(self, page_id: str) -> dict:
+        data = self._get(f"pages/{page_id}")
+        if isinstance(data, list) and data:
+            data = data[0]
+        return data if isinstance(data, dict) else {}
+
+    # ── Transacoes de Pedido ──────────────────────────────────────────────
+
+    def list_order_transactions(self, order_id: str) -> dict:
+        data = self._get(f"orders/{order_id}/transactions")
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    # ── Abandonos de carrinho ─────────────────────────────────────────────
+
+    def list_abandoned_checkouts(self, limit: int = 50) -> dict:
+        params = f"per_page={min(limit, 200)}&page=1"
+        data = self._get("checkouts", params)
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    # ── Imagens de produto ────────────────────────────────────────────────
+
+    def list_product_images(self, product_id: str) -> dict:
+        data = self._get(f"products/{product_id}/images")
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    # ── Webhooks ──────────────────────────────────────────────────────────────
+
+    def list_webhooks(self) -> dict:
+        data = self._get("webhooks")
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    def create_webhook(self, url: str, event: str) -> dict:
+        body = {"url": url, "event": event}
+        raw = self._post("webhooks", body)
+        return {"success": True, "action": "create_webhook", "raw": raw}
+
+    def delete_webhook(self, webhook_id: str) -> dict:
+        try:
+            raw = self._delete(f"webhooks/{webhook_id}")
+            return {"success": True, "action": "delete_webhook", "webhook_id": webhook_id, "raw": raw}
+        except Exception as e:
+            return {"success": False, "action": "delete_webhook", "webhook_id": webhook_id, "error": str(e)}
+
+    # ── Metafields ────────────────────────────────────────────────────────────
+
+    def list_metafields(self, resource: str = "store", resource_id: str | None = None) -> dict:
+        if resource_id:
+            path = f"{resource}/{resource_id}/metafields"
+        else:
+            path = f"{resource}/metafields"
+        data = self._get(path)
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
+    # ── Frete / Shipping Carriers ─────────────────────────────────────────────
+
+    def list_shipping_carriers(self) -> dict:
+        data = self._get("shipping_carriers")
+        items = data if isinstance(data, list) else []
+        return make_list_response(items, total_count=len(items))
+
 
 if __name__ == "__main__":
     try:
