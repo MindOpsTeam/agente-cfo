@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-MCP server para Omie ERP — 86 tools.
+MCP server para Omie ERP — 96 tools.
 Endpoints cobertos: clientes, produtos, pedidos, financeiro (pagar/receber),
 NF-e, NFS-e, estoque, departamentos, projetos, categorias, contas correntes/bancárias,
 centros de custo, tags, lançamentos, fluxo de caixa, ordens de serviço, empresa,
-saldo, vencidos, fornecedores, vendedores, transportadoras, serviços.
+saldo, vencidos, fornecedores, vendedores, transportadoras, serviços,
+transferências entre contas, download XML NF-e, pedidos de compra.
 """
 import asyncio
 import json
@@ -50,6 +51,34 @@ from omie_client import (
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp import types
+
+import urllib.request
+import urllib.error
+
+_OMIE_BASE = "https://app.omie.com.br/api/v1"
+
+def _omie_rpc(endpoint: str, call: str, param: list) -> dict:
+    """Direct Omie RPC call for endpoints not in omie_client."""
+    payload = json.dumps({
+        "call": call,
+        "app_key": os.environ.get("OMIE_APP_KEY", ""),
+        "app_secret": os.environ.get("OMIE_APP_SECRET", ""),
+        "param": param,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{_OMIE_BASE}/{endpoint}",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        return {"error": f"HTTP {e.code}", "detail": body}
+    except Exception as e:
+        return {"error": str(e)}
 
 server = Server('omie')
 
@@ -499,6 +528,28 @@ async def list_tools() -> list[types.Tool]:
                    inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
         types.Tool(name='omie_os_alterar', description='Altera ordem de servico no Omie',
                    inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        # ── Transferências entre contas ──
+        types.Tool(name='omie_transferencia_incluir', description='Inclui transferencia entre contas no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_transferencia_listar', description='Lista transferencias entre contas do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_transferencia_excluir', description='Exclui transferencia entre contas no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo da transferencia'}},'required':['codigo']}),
+        # ── Tags extras (CRUD) ──
+        types.Tool(name='omie_tags_incluir', description='Inclui tag/etiqueta no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_tags_excluir', description='Exclui tag/etiqueta no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (nCodTag ou cTag)'}},'required':['body']}),
+        # ── Download XML NF-e ──
+        types.Tool(name='omie_nfe_download_xml', description='Faz download do XML completo de uma NF-e',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (nNF, cSerie, etc)'}},'required':['body']}),
+        # ── Pedidos de Compra ──
+        types.Tool(name='omie_pedido_compra_incluir', description='Inclui pedido de compra no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_pedido_compra_listar', description='Lista pedidos de compra do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_pedido_compra_detalhar', description='Detalha pedido de compra pelo codigo',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (nCodPedido ou cCodIntPedido)'}},'required':['body']}),
     ]
 
 
@@ -688,6 +739,34 @@ def _dispatch(name: str, args: dict):
         # OS extras
         case 'omie_os_incluir': return os_incluir(args['body'])
         case 'omie_os_alterar': return os_alterar(args['body'])
+        # Transferências entre contas
+        case 'omie_transferencia_incluir':
+            return _omie_rpc("financas/transferencia/", "IncluirTransferencia", [args['body']])
+        case 'omie_transferencia_listar':
+            return _omie_rpc("financas/transferencia/", "ListarTransferencias", [
+                {"nPagina": args.get('pagina', 1), "nRegPorPagina": args.get('por_pagina', 20)}
+            ])
+        case 'omie_transferencia_excluir':
+            return _omie_rpc("financas/transferencia/", "ExcluirTransferencia", [
+                {"nCodTransf": args['codigo']}
+            ])
+        # Tags extras (CRUD)
+        case 'omie_tags_incluir':
+            return _omie_rpc("geral/tags/", "IncluirTag", [args['body']])
+        case 'omie_tags_excluir':
+            return _omie_rpc("geral/tags/", "ExcluirTag", [args['body']])
+        # Download XML NF-e
+        case 'omie_nfe_download_xml':
+            return _omie_rpc("produtos/nfe/", "ObterXmlNFe", [args['body']])
+        # Pedidos de Compra
+        case 'omie_pedido_compra_incluir':
+            return _omie_rpc("estoque/pedido/", "IncluirPedido", [args['body']])
+        case 'omie_pedido_compra_listar':
+            return _omie_rpc("estoque/pedido/", "ListarPedidos", [
+                {"nPagina": args.get('pagina', 1), "nRegPorPagina": args.get('por_pagina', 20)}
+            ])
+        case 'omie_pedido_compra_detalhar':
+            return _omie_rpc("estoque/pedido/", "ConsultarPedido", [args['body']])
         case _:
             raise ValueError(f'Tool desconhecida: {name}')
 
