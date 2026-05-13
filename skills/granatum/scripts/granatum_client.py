@@ -141,6 +141,104 @@ class GranatumClient(BaseERPClient):
     def company_info(self):
         return {"name": "N/A", "cnpj": None, "segment": "ERP"}
 
+    # ── Contas Bancárias ─────────────────────────────────────────────────────
+    def list_bank_accounts(self):
+        return self._get("contas")
+
+    def get_bank_account(self, id: str):
+        return self._get(f"contas/{id}")
+
+    def create_bank_account(self, data: dict):
+        return self._post("contas", data)
+
+    def update_bank_account(self, id: str, data: dict):
+        return self._put(f"contas/{id}", data)
+
+    def delete_bank_account(self, id: str):
+        return self._delete(f"contas/{id}")
+
+    # ── Lançamentos extras ───────────────────────────────────────────────────
+    def get_entry(self, id: str):
+        return self._get(f"lancamentos/{id}")
+
+    def update_entry(self, id: str, data: dict):
+        return self._put(f"lancamentos/{id}", data)
+
+    def delete_entry(self, id: str):
+        return self._delete(f"lancamentos/{id}")
+
+    # ── Categorias ───────────────────────────────────────────────────────────
+    def list_categories(self):
+        return self._get("categorias")
+
+    def get_category(self, id: str):
+        return self._get(f"categorias/{id}")
+
+    def create_category(self, data: dict):
+        return self._post("categorias", data)
+
+    def update_category(self, id: str, data: dict):
+        return self._put(f"categorias/{id}", data)
+
+    def delete_category(self, id: str):
+        return self._delete(f"categorias/{id}")
+
+    # ── Centros de Custo ─────────────────────────────────────────────────────
+    def list_cost_centers(self):
+        return self._get("centros_custo")
+
+    def get_cost_center(self, id: str):
+        return self._get(f"centros_custo/{id}")
+
+    def create_cost_center(self, data: dict):
+        return self._post("centros_custo", data)
+
+    def update_cost_center(self, id: str, data: dict):
+        return self._put(f"centros_custo/{id}", data)
+
+    def delete_cost_center(self, id: str):
+        return self._delete(f"centros_custo/{id}")
+
+    # ── Clientes ─────────────────────────────────────────────────────────────
+    def list_customers(self, limit=50, page=1):
+        return self._get("clientes", f"&registros_por_pagina={limit}&pagina={page}")
+
+    def get_customer(self, id: str):
+        return self._get(f"clientes/{id}")
+
+    def create_customer(self, data: dict):
+        return self._post("clientes", data)
+
+    def update_customer(self, id: str, data: dict):
+        return self._put(f"clientes/{id}", data)
+
+    def delete_customer(self, id: str):
+        return self._delete(f"clientes/{id}")
+
+    # ── Fornecedores ─────────────────────────────────────────────────────────
+    def list_suppliers(self, limit=50, page=1):
+        return self._get("fornecedores", f"&registros_por_pagina={limit}&pagina={page}")
+
+    def get_supplier(self, id: str):
+        return self._get(f"fornecedores/{id}")
+
+    def create_supplier(self, data: dict):
+        return self._post("fornecedores", data)
+
+    def update_supplier(self, id: str, data: dict):
+        return self._put(f"fornecedores/{id}", data)
+
+    def delete_supplier(self, id: str):
+        return self._delete(f"fornecedores/{id}")
+
+    # ── Formas de Pagamento ──────────────────────────────────────────────────
+    def list_payment_methods(self):
+        return self._get("formas_pagamento")
+
+    # ── Tipos de Documento ───────────────────────────────────────────────────
+    def list_document_types(self):
+        return self._get("tipos_documento")
+
 
 if __name__ == "__main__":
     try:
