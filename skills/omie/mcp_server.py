@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-MCP server para Omie ERP — 40 tools.
+MCP server para Omie ERP — 86 tools.
 Endpoints cobertos: clientes, produtos, pedidos, financeiro (pagar/receber),
-NF-e, estoque, departamentos, projetos, categorias, contas correntes,
-tags, lançamentos, fluxo de caixa, ordens de serviço, empresa, saldo, vencidos.
+NF-e, NFS-e, estoque, departamentos, projetos, categorias, contas correntes/bancárias,
+centros de custo, tags, lançamentos, fluxo de caixa, ordens de serviço, empresa,
+saldo, vencidos, fornecedores, vendedores, transportadoras, serviços.
 """
 import asyncio
 import json
@@ -14,17 +15,32 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'scripts'))
 from omie_client import (
     clientes_listar, clientes_buscar, clientes_detalhar,
-    clientes_criar, clientes_atualizar,
+    clientes_criar, clientes_atualizar, clientes_excluir,
     produtos_listar, produtos_detalhar,
-    produtos_criar, produtos_atualizar,
+    produtos_criar, produtos_atualizar, produtos_excluir,
     pedidos_listar, pedidos_detalhar, pedidos_status, pedidos_criar,
+    pedidos_excluir, pedidos_alterar,
     contas_receber, contas_pagar, resumo_financeiro,
+    contas_pagar_detalhar, contas_pagar_incluir, contas_pagar_alterar,
+    contas_receber_detalhar, contas_receber_incluir, contas_receber_alterar,
     nfe_listar, nfe_detalhar, nfe_xml, nfe_cancelar,
+    nfe_consultar_status, nfe_inutilizar,
+    nfse_listar, nfse_detalhar, nfse_cancelar,
     estoque_posicao, estoque_produto,
     departamentos_listar, projetos_listar, categorias_listar,
+    categorias_incluir, categorias_alterar, categorias_excluir,
     contas_correntes_listar, tags_listar,
+    contas_bancarias_listar, contas_bancarias_incluir, contas_bancarias_alterar,
+    contas_bancarias_detalhar, contas_bancarias_excluir,
+    centros_custo_listar_v2, centros_custo_incluir, centros_custo_alterar, centros_custo_excluir,
     lancamentos_listar, fluxo_caixa,
-    os_listar, os_detalhar,
+    os_listar, os_detalhar, os_incluir, os_alterar,
+    fornecedores_listar, fornecedores_detalhar, fornecedores_incluir,
+    fornecedores_alterar, fornecedores_excluir,
+    vendedores_listar, vendedores_incluir, vendedores_alterar, vendedores_excluir,
+    transportadoras_listar, transportadoras_incluir, transportadoras_alterar,
+    servicos_listar, servicos_incluir, servicos_alterar, servicos_excluir,
+    empresa_consultar, empresa_alterar,
     unified_get_balance, unified_list_payables, unified_list_receivables,
     unified_list_overdue, unified_company_info,
     unified_pay_payable, unified_mark_received,
@@ -375,6 +391,114 @@ async def list_tools() -> list[types.Tool]:
                    inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
         types.Tool(name='omie_os_detalhar', description='Obtém detalhes de uma ordem de serviço',
                    inputSchema={'type':'object','properties':{'numero':{'type':'integer'}},'required':['numero']}),
+        # ── Fornecedores ──
+        types.Tool(name='omie_fornecedores_listar', description='Lista fornecedores cadastrados no Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_fornecedores_detalhar', description='Detalha fornecedor pelo codigo Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do fornecedor'}},'required':['codigo']}),
+        types.Tool(name='omie_fornecedores_incluir', description='Inclui fornecedor no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (razao_social, cnpj_cpf obrigatorios)'}},'required':['body']}),
+        types.Tool(name='omie_fornecedores_alterar', description='Altera fornecedor no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (codigo_cliente_omie obrigatorio)'}},'required':['body']}),
+        types.Tool(name='omie_fornecedores_excluir', description='Exclui fornecedor no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do fornecedor'}},'required':['codigo']}),
+        # ── Contas Bancárias extras ──
+        types.Tool(name='omie_contas_bancarias_incluir', description='Inclui conta bancaria no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (descricao obrigatorio)'}},'required':['body']}),
+        types.Tool(name='omie_contas_bancarias_alterar', description='Altera conta bancaria no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (nCodCC obrigatorio)'}},'required':['body']}),
+        types.Tool(name='omie_contas_bancarias_detalhar', description='Detalha conta bancaria pelo codigo',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo da conta corrente (nCodCC)'}},'required':['codigo']}),
+        types.Tool(name='omie_contas_bancarias_excluir', description='Exclui conta bancaria no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo da conta corrente (nCodCC)'}},'required':['codigo']}),
+        # ── Centros de Custo ──
+        types.Tool(name='omie_centros_custo_listar', description='Lista centros de custo do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':50}},'required':[]}),
+        types.Tool(name='omie_centros_custo_incluir', description='Inclui centro de custo no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (cCodCCusto, descricao obrigatorios)'}},'required':['body']}),
+        types.Tool(name='omie_centros_custo_alterar', description='Altera centro de custo no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (cCodCCusto obrigatorio)'}},'required':['body']}),
+        types.Tool(name='omie_centros_custo_excluir', description='Exclui centro de custo no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'string','description':'Codigo do centro de custo (cCodCCusto)'}},'required':['codigo']}),
+        # ── Serviços ──
+        types.Tool(name='omie_servicos_listar', description='Lista servicos cadastrados no Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_servicos_incluir', description='Inclui servico no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (descricao obrigatorio)'}},'required':['body']}),
+        types.Tool(name='omie_servicos_alterar', description='Altera servico no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie (codigo_produto obrigatorio)'}},'required':['body']}),
+        types.Tool(name='omie_servicos_excluir', description='Exclui servico no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do servico'}},'required':['codigo']}),
+        # ── NF-e extras ──
+        types.Tool(name='omie_nfe_consultar_status', description='Consulta status de uma NF-e pelo numero',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer','description':'Numero da NF-e'}},'required':['numero']}),
+        types.Tool(name='omie_nfe_inutilizar', description='Inutiliza numeracao de NF-e no Omie',
+                   inputSchema={'type':'object','properties':{'numero_inicio':{'type':'integer','description':'Numero inicial'},'numero_fim':{'type':'integer','description':'Numero final'},'motivo':{'type':'string','default':'Inutilizacao'}},'required':['numero_inicio','numero_fim']}),
+        # ── Vendedores ──
+        types.Tool(name='omie_vendedores_listar', description='Lista vendedores cadastrados no Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_vendedores_incluir', description='Inclui vendedor no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_vendedores_alterar', description='Altera vendedor no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_vendedores_excluir', description='Exclui vendedor no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do vendedor'}},'required':['codigo']}),
+        # ── Transportadoras ──
+        types.Tool(name='omie_transportadoras_listar', description='Lista transportadoras cadastradas no Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_transportadoras_incluir', description='Inclui transportadora no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_transportadoras_alterar', description='Altera transportadora no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        # ── Categorias extras ──
+        types.Tool(name='omie_categorias_incluir', description='Inclui categoria financeira no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_categorias_alterar', description='Altera categoria financeira no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_categorias_excluir', description='Exclui categoria financeira no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'string','description':'Codigo da categoria (cCodCateg)'}},'required':['codigo']}),
+        # ── Empresa ──
+        types.Tool(name='omie_empresa_consultar', description='Consulta dados da empresa no Omie',
+                   inputSchema={'type':'object','properties':{},'required':[]}),
+        types.Tool(name='omie_empresa_alterar', description='Altera dados da empresa no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        # ── Clientes excluir ──
+        types.Tool(name='omie_clientes_excluir', description='Exclui cliente no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do cliente'}},'required':['codigo']}),
+        # ── Produtos excluir ──
+        types.Tool(name='omie_produtos_excluir', description='Exclui produto no Omie',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do produto'}},'required':['codigo']}),
+        # ── Pedidos extras ──
+        types.Tool(name='omie_pedidos_excluir', description='Exclui pedido de venda no Omie',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer','description':'Numero do pedido'}},'required':['numero']}),
+        types.Tool(name='omie_pedidos_alterar', description='Altera pedido de venda no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        # ── Contas a pagar extras ──
+        types.Tool(name='omie_contas_pagar_detalhar', description='Detalha conta a pagar pelo codigo',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do titulo (nCodTitulo)'}},'required':['codigo']}),
+        types.Tool(name='omie_contas_pagar_incluir', description='Inclui conta a pagar nativa no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_contas_pagar_alterar', description='Altera conta a pagar no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        # ── Contas a receber extras ──
+        types.Tool(name='omie_contas_receber_detalhar', description='Detalha conta a receber pelo codigo',
+                   inputSchema={'type':'object','properties':{'codigo':{'type':'integer','description':'Codigo do titulo (nCodTitulo)'}},'required':['codigo']}),
+        types.Tool(name='omie_contas_receber_incluir', description='Inclui conta a receber nativa no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_contas_receber_alterar', description='Altera conta a receber no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        # ── NFS-e ──
+        types.Tool(name='omie_nfse_listar', description='Lista notas fiscais de servico (NFS-e) do Omie',
+                   inputSchema={'type':'object','properties':{'pagina':{'type':'integer','default':1},'por_pagina':{'type':'integer','default':20}},'required':[]}),
+        types.Tool(name='omie_nfse_detalhar', description='Detalha NFS-e pelo numero',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer','description':'Numero da NFS-e'}},'required':['numero']}),
+        types.Tool(name='omie_nfse_cancelar', description='Cancela NFS-e no Omie',
+                   inputSchema={'type':'object','properties':{'numero':{'type':'integer','description':'Numero da NFS-e'},'motivo':{'type':'string','default':'Cancelamento'}},'required':['numero']}),
+        # ── OS extras ──
+        types.Tool(name='omie_os_incluir', description='Inclui ordem de servico no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
+        types.Tool(name='omie_os_alterar', description='Altera ordem de servico no Omie',
+                   inputSchema={'type':'object','properties':{'body':{'type':'object','description':'Corpo da requisicao conforme API Omie'}},'required':['body']}),
     ]
 
 
@@ -494,6 +618,76 @@ def _dispatch(name: str, args: dict):
         case 'omie_os_listar':
             return os_listar(args.get('pagina', 1), args.get('por_pagina', 20))
         case 'omie_os_detalhar': return os_detalhar(args['numero'])
+        # Fornecedores
+        case 'omie_fornecedores_listar':
+            return fornecedores_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_fornecedores_detalhar': return fornecedores_detalhar(args['codigo'])
+        case 'omie_fornecedores_incluir': return fornecedores_incluir(args['body'])
+        case 'omie_fornecedores_alterar': return fornecedores_alterar(args['body'])
+        case 'omie_fornecedores_excluir': return fornecedores_excluir(args['codigo'])
+        # Contas Bancárias extras
+        case 'omie_contas_bancarias_incluir': return contas_bancarias_incluir(args['body'])
+        case 'omie_contas_bancarias_alterar': return contas_bancarias_alterar(args['body'])
+        case 'omie_contas_bancarias_detalhar': return contas_bancarias_detalhar(args['codigo'])
+        case 'omie_contas_bancarias_excluir': return contas_bancarias_excluir(args['codigo'])
+        # Centros de Custo
+        case 'omie_centros_custo_listar':
+            return centros_custo_listar_v2(args.get('pagina', 1), args.get('por_pagina', 50))
+        case 'omie_centros_custo_incluir': return centros_custo_incluir(args['body'])
+        case 'omie_centros_custo_alterar': return centros_custo_alterar(args['body'])
+        case 'omie_centros_custo_excluir': return centros_custo_excluir(args['codigo'])
+        # Serviços
+        case 'omie_servicos_listar':
+            return servicos_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_servicos_incluir': return servicos_incluir(args['body'])
+        case 'omie_servicos_alterar': return servicos_alterar(args['body'])
+        case 'omie_servicos_excluir': return servicos_excluir(args['codigo'])
+        # NF-e extras
+        case 'omie_nfe_consultar_status': return nfe_consultar_status(args['numero'])
+        case 'omie_nfe_inutilizar':
+            return nfe_inutilizar(args['numero_inicio'], args['numero_fim'], motivo=args.get('motivo', 'Inutilizacao'))
+        # Vendedores
+        case 'omie_vendedores_listar':
+            return vendedores_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_vendedores_incluir': return vendedores_incluir(args['body'])
+        case 'omie_vendedores_alterar': return vendedores_alterar(args['body'])
+        case 'omie_vendedores_excluir': return vendedores_excluir(args['codigo'])
+        # Transportadoras
+        case 'omie_transportadoras_listar':
+            return transportadoras_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_transportadoras_incluir': return transportadoras_incluir(args['body'])
+        case 'omie_transportadoras_alterar': return transportadoras_alterar(args['body'])
+        # Categorias extras
+        case 'omie_categorias_incluir': return categorias_incluir(args['body'])
+        case 'omie_categorias_alterar': return categorias_alterar(args['body'])
+        case 'omie_categorias_excluir': return categorias_excluir(args['codigo'])
+        # Empresa
+        case 'omie_empresa_consultar': return empresa_consultar()
+        case 'omie_empresa_alterar': return empresa_alterar(args['body'])
+        # Clientes excluir
+        case 'omie_clientes_excluir': return clientes_excluir(args['codigo'])
+        # Produtos excluir
+        case 'omie_produtos_excluir': return produtos_excluir(args['codigo'])
+        # Pedidos extras
+        case 'omie_pedidos_excluir': return pedidos_excluir(args['numero'])
+        case 'omie_pedidos_alterar': return pedidos_alterar(args['body'])
+        # Contas a pagar extras
+        case 'omie_contas_pagar_detalhar': return contas_pagar_detalhar(args['codigo'])
+        case 'omie_contas_pagar_incluir': return contas_pagar_incluir(args['body'])
+        case 'omie_contas_pagar_alterar': return contas_pagar_alterar(args['body'])
+        # Contas a receber extras
+        case 'omie_contas_receber_detalhar': return contas_receber_detalhar(args['codigo'])
+        case 'omie_contas_receber_incluir': return contas_receber_incluir(args['body'])
+        case 'omie_contas_receber_alterar': return contas_receber_alterar(args['body'])
+        # NFS-e
+        case 'omie_nfse_listar':
+            return nfse_listar(args.get('pagina', 1), args.get('por_pagina', 20))
+        case 'omie_nfse_detalhar': return nfse_detalhar(args['numero'])
+        case 'omie_nfse_cancelar':
+            return nfse_cancelar(args['numero'], motivo=args.get('motivo', 'Cancelamento'))
+        # OS extras
+        case 'omie_os_incluir': return os_incluir(args['body'])
+        case 'omie_os_alterar': return os_alterar(args['body'])
         case _:
             raise ValueError(f'Tool desconhecida: {name}')
 

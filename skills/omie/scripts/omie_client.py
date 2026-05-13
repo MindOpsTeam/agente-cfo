@@ -572,3 +572,192 @@ def os_detalhar(numero: int):
     return api_call("servicos/os", "ConsultarOS", [
         {"nCodOS": numero}
     ])
+
+# ── Fornecedores ────────────────────────────────────────────────────────────
+
+def fornecedores_listar(pagina=1, por_pagina=20):
+    return api_call("geral/clientes", "ListarClientesResumido", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina, "clientesFiltro": {"tags": [{"tag": "fornecedor"}]}}
+    ])
+
+def fornecedores_detalhar(codigo: int):
+    return api_call("geral/clientes", "ConsultarCliente", [{"codigo_cliente_omie": codigo}])
+
+def fornecedores_incluir(dados: dict):
+    return api_call("geral/clientes", "IncluirCliente", [dados])
+
+def fornecedores_alterar(dados: dict):
+    return api_call("geral/clientes", "AlterarCliente", [dados])
+
+def fornecedores_excluir(codigo: int):
+    return api_call("geral/clientes", "ExcluirCliente", [{"codigo_cliente_omie": codigo}])
+
+# ── Contas Bancárias ────────────────────────────────────────────────────────
+
+def contas_bancarias_listar(pagina=1, por_pagina=20):
+    return api_call("geral/contacorrente", "ListarContasCorrentes", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+def contas_bancarias_incluir(dados: dict):
+    return api_call("geral/contacorrente", "IncluirContaCorrente", [dados])
+
+def contas_bancarias_alterar(dados: dict):
+    return api_call("geral/contacorrente", "AlterarContaCorrente", [dados])
+
+def contas_bancarias_detalhar(codigo: int):
+    return api_call("geral/contacorrente", "ConsultarContaCorrente", [{"nCodCC": codigo}])
+
+def contas_bancarias_excluir(codigo: int):
+    return api_call("geral/contacorrente", "ExcluirContaCorrente", [{"nCodCC": codigo}])
+
+# ── Centros de Custo extras ─────────────────────────────────────────────────
+
+def centros_custo_incluir(dados: dict):
+    return api_call("geral/centrocusto", "IncluirCentroCusto", [dados])
+
+def centros_custo_alterar(dados: dict):
+    return api_call("geral/centrocusto", "AlterarCentroCusto", [dados])
+
+def centros_custo_excluir(codigo: str):
+    return api_call("geral/centrocusto", "ExcluirCentroCusto", [{"cCodCCusto": codigo}])
+
+def centros_custo_listar_v2(pagina=1, por_pagina=50):
+    return api_call("geral/centrocusto", "ListarCentroCusto", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+# ── Serviços ────────────────────────────────────────────────────────────────
+
+def servicos_listar(pagina=1, por_pagina=20):
+    return api_call("geral/produtos", "ListarProdutosResumido", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina, "filtrar_apenas_tipo": "S"}
+    ])
+
+def servicos_incluir(dados: dict):
+    return api_call("geral/produtos", "IncluirProduto", [dados])
+
+def servicos_alterar(dados: dict):
+    return api_call("geral/produtos", "AlterarProduto", [dados])
+
+def servicos_excluir(codigo: int):
+    return api_call("geral/produtos", "ExcluirProduto", [{"codigo_produto": codigo}])
+
+# ── NF-e extras ─────────────────────────────────────────────────────────────
+
+def nfe_consultar_status(numero: int):
+    return api_call("produtos/nfe", "ConsultarStatusNFe", [{"nNF": numero}])
+
+def nfe_inutilizar(numero_inicio: int, numero_fim: int, motivo: str = "Inutilizacao"):
+    return api_call("produtos/nfe", "InutilizarNumeracao", [
+        {"nNFIni": numero_inicio, "nNFFin": numero_fim, "cMotivo": motivo}
+    ])
+
+# ── Vendedores ──────────────────────────────────────────────────────────────
+
+def vendedores_listar(pagina=1, por_pagina=20):
+    return api_call("geral/vendedores", "ListarVendedores", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+def vendedores_incluir(dados: dict):
+    return api_call("geral/vendedores", "IncluirVendedor", [dados])
+
+def vendedores_alterar(dados: dict):
+    return api_call("geral/vendedores", "AlterarVendedor", [dados])
+
+def vendedores_excluir(codigo: int):
+    return api_call("geral/vendedores", "ExcluirVendedor", [{"codigo": codigo}])
+
+# ── Transportadoras ────────────────────────────────────────────────────────
+
+def transportadoras_listar(pagina=1, por_pagina=20):
+    return api_call("geral/clientes", "ListarClientesResumido", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina, "clientesFiltro": {"tags": [{"tag": "transportadora"}]}}
+    ])
+
+def transportadoras_incluir(dados: dict):
+    return api_call("geral/clientes", "IncluirCliente", [dados])
+
+def transportadoras_alterar(dados: dict):
+    return api_call("geral/clientes", "AlterarCliente", [dados])
+
+# ── Categorias extras ───────────────────────────────────────────────────────
+
+def categorias_incluir(dados: dict):
+    return api_call("geral/categorias", "IncluirCategoria", [dados])
+
+def categorias_alterar(dados: dict):
+    return api_call("geral/categorias", "AlterarCategoria", [dados])
+
+def categorias_excluir(codigo: str):
+    return api_call("geral/categorias", "ExcluirCategoria", [{"cCodCateg": codigo}])
+
+# ── Empresa ─────────────────────────────────────────────────────────────────
+
+def empresa_consultar():
+    return api_call("geral/empresas", "ConsultarEmpresa", [{}])
+
+def empresa_alterar(dados: dict):
+    return api_call("geral/empresas", "AlterarEmpresa", [dados])
+
+# ── Clientes excluir ───────────────────────────────────────────────────────
+
+def clientes_excluir(codigo: int):
+    return api_call("geral/clientes", "ExcluirCliente", [{"codigo_cliente_omie": codigo}])
+
+# ── Produtos excluir ──────────────────────────────────────────────────────
+
+def produtos_excluir(codigo: int):
+    return api_call("geral/produtos", "ExcluirProduto", [{"codigo_produto": codigo}])
+
+# ── Pedidos extras ─────────────────────────────────────────────────────────
+
+def pedidos_excluir(numero: int):
+    return api_call("produtos/pedido", "ExcluirPedido", [{"numero_pedido": numero}])
+
+def pedidos_alterar(dados: dict):
+    return api_call("produtos/pedido", "AlterarPedido", [dados])
+
+# ── Contas a pagar extras ──────────────────────────────────────────────────
+
+def contas_pagar_detalhar(codigo: int):
+    return api_call("financas/contaspagar", "ConsultarContaPagar", [{"nCodTitulo": codigo}])
+
+def contas_pagar_incluir(dados: dict):
+    return api_call("financas/contaspagar", "IncluirContaPagar", [dados])
+
+def contas_pagar_alterar(dados: dict):
+    return api_call("financas/contaspagar", "AlterarContaPagar", [dados])
+
+# ── Contas a receber extras ────────────────────────────────────────────────
+
+def contas_receber_detalhar(codigo: int):
+    return api_call("financas/contasreceber", "ConsultarContaReceber", [{"nCodTitulo": codigo}])
+
+def contas_receber_incluir(dados: dict):
+    return api_call("financas/contasreceber", "IncluirContaReceber", [dados])
+
+def contas_receber_alterar(dados: dict):
+    return api_call("financas/contasreceber", "AlterarContaReceber", [dados])
+
+# ── NFS-e ───────────────────────────────────────────────────────────────────
+
+def nfse_listar(pagina=1, por_pagina=20):
+    return api_call("servicos/nfse", "ListarNFSe", [
+        {"pagina": pagina, "registros_por_pagina": por_pagina}
+    ])
+
+def nfse_detalhar(numero: int):
+    return api_call("servicos/nfse", "ConsultarNFSe", [{"nNFS": numero}])
+
+def nfse_cancelar(numero: int, motivo: str = "Cancelamento"):
+    return api_call("servicos/nfse", "CancelarNFSe", [{"nNFS": numero, "cMotivo": motivo}])
+
+# ── OS extras ───────────────────────────────────────────────────────────────
+
+def os_incluir(dados: dict):
+    return api_call("servicos/os", "IncluirOS", [dados])
+
+def os_alterar(dados: dict):
+    return api_call("servicos/os", "AlterarOS", [dados])
