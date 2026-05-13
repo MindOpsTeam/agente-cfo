@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-MCP server para Kommo CRM (formerly amoCRM) — 55 tools.
+MCP server para Kommo CRM (formerly amoCRM) — 85 tools.
 Endpoints cobertos: leads, contacts, companies, customers, tasks,
-pipelines, users, account, custom_fields, catalogs, events, calls,
-tags, webhooks, notes, links, empresa.
+pipelines, users, account, custom_fields, custom_field_groups, catalogs,
+events, calls, tags, webhooks, notes, links, segments, sources, chats,
+lead_statuses, shortlinks, roles, customers_segments, salesbot, empresa.
 """
 import asyncio
 import json
@@ -264,6 +265,124 @@ async def list_tools() -> list[types.Tool]:
             'id': {'type': 'string'}, 'reason': {'type': 'string'},
         }, ['id']),
         _t('kommo_empresa', 'Informacoes da empresa conectada ao Kommo', {}),
+
+        # ── Segments (contacts) ─────────────────────────────────────────
+        _t('kommo_segments_list', 'Lista segmentos de contatos', {}),
+        _t('kommo_segments_create', 'Cria segmento de contatos', {
+            'body': {'type': 'object', 'description': 'Dados do segmento (name, ...)'},
+        }, ['body']),
+        _t('kommo_segments_get', 'Detalhes de um segmento de contatos', {
+            'id': {'type': 'string', 'description': 'ID do segmento'},
+        }, ['id']),
+        _t('kommo_segments_update', 'Atualiza segmento de contatos', {
+            'id': {'type': 'string', 'description': 'ID do segmento'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['id', 'body']),
+        _t('kommo_segments_delete', 'Exclui segmento de contatos', {
+            'id': {'type': 'string', 'description': 'ID do segmento'},
+        }, ['id']),
+
+        # ── Custom Field Groups ─────────────────────────────────────────
+        _t('kommo_custom_field_groups_list', 'Lista grupos de campos customizados por entidade', {
+            'entity': {'type': 'string', 'description': 'Entidade: leads, contacts, companies, customers'},
+        }, ['entity']),
+        _t('kommo_custom_field_groups_create', 'Cria grupo de campos customizados', {
+            'entity': {'type': 'string', 'description': 'Entidade: leads, contacts, companies, customers'},
+            'body': {'type': 'object', 'description': 'Dados do grupo (name, ...)'},
+        }, ['entity', 'body']),
+        _t('kommo_custom_field_groups_update', 'Atualiza grupo de campos customizados', {
+            'entity': {'type': 'string', 'description': 'Entidade: leads, contacts, companies, customers'},
+            'id': {'type': 'string', 'description': 'ID do grupo'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['entity', 'id', 'body']),
+        _t('kommo_custom_field_groups_delete', 'Exclui grupo de campos customizados', {
+            'entity': {'type': 'string', 'description': 'Entidade: leads, contacts, companies, customers'},
+            'id': {'type': 'string', 'description': 'ID do grupo'},
+        }, ['entity', 'id']),
+
+        # ── Sources ─────────────────────────────────────────────────────
+        _t('kommo_sources_list', 'Lista fontes/origens do Kommo', {}),
+        _t('kommo_sources_create', 'Cria fonte/origem no Kommo', {
+            'body': {'type': 'object', 'description': 'Dados da fonte (name, ...)'},
+        }, ['body']),
+        _t('kommo_sources_delete', 'Exclui fonte/origem', {
+            'id': {'type': 'string', 'description': 'ID da fonte'},
+        }, ['id']),
+
+        # ── Chats ───────────────────────────────────────────────────────
+        _t('kommo_chats_list', 'Lista chats do Kommo', {
+            'entity_id': {'type': 'integer', 'description': 'ID da entidade associada'},
+            'entity_type': {'type': 'string', 'description': 'Tipo da entidade (contacts, leads)'},
+        }),
+        _t('kommo_chats_messages_list', 'Lista mensagens de um chat', {
+            'chat_id': {'type': 'string', 'description': 'ID do chat'},
+        }, ['chat_id']),
+        _t('kommo_chats_message_send', 'Envia mensagem em um chat', {
+            'body': {'type': 'object', 'description': 'Corpo da mensagem (chat_id, message, ...)'},
+        }, ['body']),
+
+        # ── Lead Statuses ───────────────────────────────────────────────
+        _t('kommo_leads_statuses_create', 'Cria status em pipeline de leads', {
+            'pipeline_id': {'type': 'string', 'description': 'ID do pipeline'},
+            'body': {'type': 'object', 'description': 'Dados do status (name, color, ...)'},
+        }, ['pipeline_id', 'body']),
+        _t('kommo_leads_statuses_update', 'Atualiza status de pipeline de leads', {
+            'pipeline_id': {'type': 'string', 'description': 'ID do pipeline'},
+            'id': {'type': 'string', 'description': 'ID do status'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['pipeline_id', 'id', 'body']),
+        _t('kommo_leads_statuses_delete', 'Exclui status de pipeline de leads', {
+            'pipeline_id': {'type': 'string', 'description': 'ID do pipeline'},
+            'id': {'type': 'string', 'description': 'ID do status'},
+        }, ['pipeline_id', 'id']),
+
+        # ── Catalog Elements (batch) ────────────────────────────────────
+        _t('kommo_catalogs_elements_create', 'Cria elementos em catalogo (batch)', {
+            'catalog_id': {'type': 'string', 'description': 'ID do catalogo'},
+            'body': {'type': 'array', 'description': 'Lista de elementos a criar', 'items': {'type': 'object'}},
+        }, ['catalog_id', 'body']),
+        _t('kommo_catalogs_elements_update', 'Atualiza elementos de catalogo (batch)', {
+            'catalog_id': {'type': 'string', 'description': 'ID do catalogo'},
+            'body': {'type': 'array', 'description': 'Lista de elementos a atualizar', 'items': {'type': 'object'}},
+        }, ['catalog_id', 'body']),
+        _t('kommo_catalogs_elements_delete', 'Exclui elementos de catalogo (batch)', {
+            'catalog_id': {'type': 'string', 'description': 'ID do catalogo'},
+            'body': {'type': 'array', 'description': 'Lista de elementos a excluir', 'items': {'type': 'object'}},
+        }, ['catalog_id', 'body']),
+
+        # ── Shortlinks ──────────────────────────────────────────────────
+        _t('kommo_shortlinks_create', 'Cria shortlink no Kommo', {
+            'body': {'type': 'object', 'description': 'Dados do shortlink (url, metadata, ...)'},
+        }, ['body']),
+
+        # ── Roles ───────────────────────────────────────────────────────
+        _t('kommo_roles_list', 'Lista roles/cargos do Kommo', {}),
+        _t('kommo_roles_get', 'Detalhes de um role/cargo', {
+            'id': {'type': 'string', 'description': 'ID do role'},
+        }, ['id']),
+        _t('kommo_roles_create', 'Cria role/cargo no Kommo', {
+            'body': {'type': 'object', 'description': 'Dados do role (name, permissions, ...)'},
+        }, ['body']),
+        _t('kommo_roles_update', 'Atualiza role/cargo no Kommo', {
+            'id': {'type': 'string', 'description': 'ID do role'},
+            'body': {'type': 'object', 'description': 'Campos a atualizar'},
+        }, ['id', 'body']),
+        _t('kommo_roles_delete', 'Exclui role/cargo do Kommo', {
+            'id': {'type': 'string', 'description': 'ID do role'},
+        }, ['id']),
+
+        # ── Customers Segments ──────────────────────────────────────────
+        _t('kommo_customers_segments_list', 'Lista segmentos de customers', {}),
+        _t('kommo_customers_segments_create', 'Cria segmento de customers', {
+            'body': {'type': 'object', 'description': 'Dados do segmento (name, ...)'},
+        }, ['body']),
+
+        # ── Salesbot ────────────────────────────────────────────────────
+        _t('kommo_salesbot_run', 'Executa salesbot em pipeline/status especifico', {
+            'pipeline_id': {'type': 'string', 'description': 'ID do pipeline'},
+            'status_id': {'type': 'string', 'description': 'ID do status'},
+            'body': {'type': 'object', 'description': 'Dados (chat_id, contact_id, ...)'},
+        }, ['pipeline_id', 'status_id', 'body']),
     ]
 
 
@@ -437,6 +556,93 @@ def _dispatch(name: str, args: dict):
             return c.mark_deal_lost(args['id'], reason=args.get('reason', ''))
         case 'kommo_empresa':
             return c.company_info()
+
+        # ── Segments (contacts) ──────────────────────────────────────
+        case 'kommo_segments_list':
+            return c._get("contacts/segments")
+        case 'kommo_segments_create':
+            return c._post("contacts/segments", [args.get('body', {})])
+        case 'kommo_segments_get':
+            return c._get(f"contacts/segments/{args['id']}")
+        case 'kommo_segments_update':
+            return c._patch(f"contacts/segments/{args['id']}", args.get('body', {}))
+        case 'kommo_segments_delete':
+            return c._delete(f"contacts/segments/{args['id']}")
+
+        # ── Custom Field Groups ──────────────────────────────────────
+        case 'kommo_custom_field_groups_list':
+            return c._get(f"{args['entity']}/custom_fields/groups")
+        case 'kommo_custom_field_groups_create':
+            return c._post(f"{args['entity']}/custom_fields/groups", [args.get('body', {})])
+        case 'kommo_custom_field_groups_update':
+            return c._patch(f"{args['entity']}/custom_fields/groups/{args['id']}", args.get('body', {}))
+        case 'kommo_custom_field_groups_delete':
+            return c._delete(f"{args['entity']}/custom_fields/groups/{args['id']}")
+
+        # ── Sources ──────────────────────────────────────────────────
+        case 'kommo_sources_list':
+            return c._get("sources")
+        case 'kommo_sources_create':
+            return c._post("sources", [args.get('body', {})])
+        case 'kommo_sources_delete':
+            return c._delete(f"sources/{args['id']}")
+
+        # ── Chats ────────────────────────────────────────────────────
+        case 'kommo_chats_list':
+            params = {}
+            if args.get('entity_id'):
+                params['entity_id'] = args['entity_id']
+            if args.get('entity_type'):
+                params['entity_type'] = args['entity_type']
+            qs = "&".join(f"{k}={v}" for k, v in params.items())
+            endpoint = f"chats?{qs}" if qs else "chats"
+            return c._get(endpoint)
+        case 'kommo_chats_messages_list':
+            return c._get(f"chats/{args['chat_id']}/messages")
+        case 'kommo_chats_message_send':
+            return c._post("chats", [args.get('body', {})])
+
+        # ── Lead Statuses ────────────────────────────────────────────
+        case 'kommo_leads_statuses_create':
+            return c._post(f"leads/pipelines/{args['pipeline_id']}/statuses", [args.get('body', {})])
+        case 'kommo_leads_statuses_update':
+            return c._patch(f"leads/pipelines/{args['pipeline_id']}/statuses/{args['id']}", args.get('body', {}))
+        case 'kommo_leads_statuses_delete':
+            return c._delete(f"leads/pipelines/{args['pipeline_id']}/statuses/{args['id']}")
+
+        # ── Catalog Elements (batch) ─────────────────────────────────
+        case 'kommo_catalogs_elements_create':
+            return c._post(f"catalogs/{args['catalog_id']}/elements", args.get('body', []))
+        case 'kommo_catalogs_elements_update':
+            return c._patch(f"catalogs/{args['catalog_id']}/elements", args.get('body', []))
+        case 'kommo_catalogs_elements_delete':
+            return c._delete(f"catalogs/{args['catalog_id']}/elements")
+
+        # ── Shortlinks ───────────────────────────────────────────────
+        case 'kommo_shortlinks_create':
+            return c._post("shortlinks", [args.get('body', {})])
+
+        # ── Roles ────────────────────────────────────────────────────
+        case 'kommo_roles_list':
+            return c._get("roles")
+        case 'kommo_roles_get':
+            return c._get(f"roles/{args['id']}")
+        case 'kommo_roles_create':
+            return c._post("roles", [args.get('body', {})])
+        case 'kommo_roles_update':
+            return c._patch(f"roles/{args['id']}", args.get('body', {}))
+        case 'kommo_roles_delete':
+            return c._delete(f"roles/{args['id']}")
+
+        # ── Customers Segments ───────────────────────────────────────
+        case 'kommo_customers_segments_list':
+            return c._get("customers/segments")
+        case 'kommo_customers_segments_create':
+            return c._post("customers/segments", [args.get('body', {})])
+
+        # ── Salesbot ─────────────────────────────────────────────────
+        case 'kommo_salesbot_run':
+            return c._post(f"salesbot/run/{args['pipeline_id']}/{args['status_id']}", args.get('body', {}))
 
         case _:
             raise ValueError(f'Tool desconhecida: {name}')
