@@ -105,6 +105,10 @@ class RDStationClient(BaseCRMClient):
         return {"success": True, "action": "mark_deal_lost", "id": id,
                 "after": {"status": "lost", "reason": reason}, "raw": raw}
 
+    def _delete(self, path):
+        url = f"{self.base_url}/{path}?token={self.token}"
+        return http_request("DELETE", url)
+
     def company_info(self):
         try:
             data = self._get("users")
@@ -114,6 +118,86 @@ class RDStationClient(BaseCRMClient):
         except Exception:
             pass
         return {"name": "N/A"}
+
+    def add_deal_note(self, id: str, note: str) -> dict:
+        raw = self._post_json(f"deals/{id}/notes", {"text": note})
+        return {"success": True, "action": "add_note", "deal_id": id, "raw": raw}
+
+    # ── Contatos ─────────────────────────────────────────────────────────────
+    def list_contacts(self, limit=50, page=1, search=None):
+        params = f"limit={limit}&page={page}"
+        if search:
+            params += f"&name={search}"
+        return self._get("contacts", params)
+
+    def get_contact(self, id: str):
+        return self._get(f"contacts/{id}")
+
+    def create_contact(self, data: dict):
+        return self._post_json("contacts", data)
+
+    def update_contact(self, id: str, data: dict):
+        return self._put(f"contacts/{id}", data)
+
+    def delete_contact(self, id: str):
+        return self._delete(f"contacts/{id}")
+
+    # ── Empresas/Organizations ───────────────────────────────────────────────
+    def list_organizations(self, limit=50, page=1, search=None):
+        params = f"limit={limit}&page={page}"
+        if search:
+            params += f"&name={search}"
+        return self._get("organizations", params)
+
+    def get_organization(self, id: str):
+        return self._get(f"organizations/{id}")
+
+    def create_organization(self, data: dict):
+        return self._post_json("organizations", data)
+
+    def update_organization(self, id: str, data: dict):
+        return self._put(f"organizations/{id}", data)
+
+    def delete_organization(self, id: str):
+        return self._delete(f"organizations/{id}")
+
+    # ── Pipelines/Funis ──────────────────────────────────────────────────────
+    def list_pipelines(self):
+        return self._get("deal_pipelines")
+
+    # ── Stages/Etapas ────────────────────────────────────────────────────────
+    def list_stages(self, pipeline_id=None):
+        params = f"deal_pipeline_id={pipeline_id}" if pipeline_id else ""
+        return self._get("deal_stages", params)
+
+    # ── Atividades/Tasks ─────────────────────────────────────────────────────
+    def list_activities(self, deal_id=None, limit=50, page=1):
+        params = f"limit={limit}&page={page}"
+        if deal_id:
+            params += f"&deal_id={deal_id}"
+        return self._get("activities", params)
+
+    def create_activity(self, data: dict):
+        return self._post_json("activities", data)
+
+    # ── Campos customizados ──────────────────────────────────────────────────
+    def list_custom_fields(self):
+        return self._get("deal_custom_fields")
+
+    # ── Usuários ─────────────────────────────────────────────────────────────
+    def list_users(self):
+        return self._get("users")
+
+    # ── Produtos ─────────────────────────────────────────────────────────────
+    def list_products(self, limit=50, page=1):
+        return self._get("deal_products", f"limit={limit}&page={page}")
+
+    def get_deal(self, id: str):
+        return self._get(f"deals/{id}")
+
+    # ── Origens de lead (sources) ────────────────────────────────────────────
+    def list_sources(self):
+        return self._get("deal_sources")
 
 
 if __name__ == "__main__":
