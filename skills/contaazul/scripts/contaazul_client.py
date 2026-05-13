@@ -126,6 +126,17 @@ class ContaAzulClient(BaseERPClient):
         return http_request("POST", url, headers=self._headers(),
                             body=_json.dumps(body).encode())
 
+    def _put(self, path: str, body: dict) -> dict:
+        self._ensure_token()
+        url = f"{BASE_URL}/{path.lstrip('/')}"
+        return http_request("PUT", url, headers=self._headers(),
+                            body=_json.dumps(body).encode())
+
+    def _delete(self, path: str) -> dict:
+        self._ensure_token()
+        url = f"{BASE_URL}/{path.lstrip('/')}"
+        return http_request("DELETE", url, headers=self._headers())
+
     def _patch(self, path: str, body: dict) -> dict:
         self._ensure_token()
         url = f"{BASE_URL}/{path.lstrip('/')}"
@@ -349,6 +360,129 @@ class ContaAzulClient(BaseERPClient):
         except Exception as e:
             return {"success": False, "action": "cancel_payable", "id": id,
                     "error": str(e), "note": "ContaAzul pode nao suportar cancelamento via API."}
+
+    # ── Clientes ─────────────────────────────────────────────────────────────
+
+    def list_customers(self, limit: int = 50, page: int = 1, search: str = "") -> dict:
+        params = f"page={page}&size={min(limit, 100)}"
+        if search:
+            params += f"&search={search}"
+        return self._get("v1/customers", params)
+
+    def get_customer(self, id: str) -> dict:
+        return self._get(f"v1/customers/{id}")
+
+    def create_customer(self, name: str, **kwargs) -> dict:
+        body: dict = {"name": name}
+        for k in ("email", "document", "phone", "company_name", "notes"):
+            if kwargs.get(k):
+                body[k] = kwargs[k]
+        raw = self._post("v1/customers", body)
+        return {"success": True, "action": "create_customer", "id": str(raw.get("id", "")), "raw": raw}
+
+    def update_customer(self, id: str, **kwargs) -> dict:
+        body = {k: v for k, v in kwargs.items() if v is not None}
+        raw = self._put(f"v1/customers/{id}", body)
+        return {"success": True, "action": "update_customer", "id": id, "raw": raw}
+
+    def delete_customer(self, id: str) -> dict:
+        raw = self._delete(f"v1/customers/{id}")
+        return {"success": True, "action": "delete_customer", "id": id, "raw": raw}
+
+    # ── Produtos ─────────────────────────────────────────────────────────────
+
+    def list_products(self, limit: int = 50, page: int = 1, search: str = "") -> dict:
+        params = f"page={page}&size={min(limit, 100)}"
+        if search:
+            params += f"&search={search}"
+        return self._get("v1/products", params)
+
+    def get_product(self, id: str) -> dict:
+        return self._get(f"v1/products/{id}")
+
+    def create_product(self, name: str, value: float, **kwargs) -> dict:
+        body: dict = {"name": name, "value": value}
+        for k in ("cost", "code", "barcode", "net_weight", "gross_weight", "category_id"):
+            if kwargs.get(k) is not None:
+                body[k] = kwargs[k]
+        raw = self._post("v1/products", body)
+        return {"success": True, "action": "create_product", "id": str(raw.get("id", "")), "raw": raw}
+
+    def update_product(self, id: str, **kwargs) -> dict:
+        body = {k: v for k, v in kwargs.items() if v is not None}
+        raw = self._put(f"v1/products/{id}", body)
+        return {"success": True, "action": "update_product", "id": id, "raw": raw}
+
+    # ── Pedidos de venda (Sales) ─────────────────────────────────────────────
+
+    def list_sales(self, limit: int = 50, page: int = 1) -> dict:
+        params = f"page={page}&size={min(limit, 100)}"
+        return self._get("v1/sales", params)
+
+    def get_sale(self, id: str) -> dict:
+        return self._get(f"v1/sales/{id}")
+
+    def create_sale(self, customer_id: str, products: list, **kwargs) -> dict:
+        body: dict = {"customer_id": customer_id, "products": products}
+        for k in ("emission", "discount", "notes", "payment_type"):
+            if kwargs.get(k) is not None:
+                body[k] = kwargs[k]
+        raw = self._post("v1/sales", body)
+        return {"success": True, "action": "create_sale", "id": str(raw.get("id", "")), "raw": raw}
+
+    # ── Contas a pagar / receber — get e delete individuais ──────────────────
+
+    def get_payable(self, id: str) -> dict:
+        return self._get(f"v1/financeiro/eventos-financeiros/contas-a-pagar/{id}")
+
+    def delete_payable(self, id: str) -> dict:
+        raw = self._delete(f"v1/financeiro/eventos-financeiros/contas-a-pagar/{id}")
+        return {"success": True, "action": "delete_payable", "id": id, "raw": raw}
+
+    def get_receivable(self, id: str) -> dict:
+        return self._get(f"v1/financeiro/eventos-financeiros/contas-a-receber/{id}")
+
+    def delete_receivable(self, id: str) -> dict:
+        raw = self._delete(f"v1/financeiro/eventos-financeiros/contas-a-receber/{id}")
+        return {"success": True, "action": "delete_receivable", "id": id, "raw": raw}
+
+    # ── NF-e ─────────────────────────────────────────────────────────────────
+
+    def list_nfes(self, limit: int = 50, page: int = 1) -> dict:
+        params = f"page={page}&size={min(limit, 100)}"
+        return self._get("v1/nfes", params)
+
+    def get_nfe(self, id: str) -> dict:
+        return self._get(f"v1/nfes/{id}")
+
+    def create_nfe(self, sale_id: str, **kwargs) -> dict:
+        body: dict = {"sale_id": sale_id}
+        for k in ("nature_of_operation", "notes"):
+            if kwargs.get(k) is not None:
+                body[k] = kwargs[k]
+        raw = self._post("v1/nfes", body)
+        return {"success": True, "action": "create_nfe", "id": str(raw.get("id", "")), "raw": raw}
+
+    # ── Contas bancárias ─────────────────────────────────────────────────────
+
+    def list_bank_accounts(self) -> dict:
+        return self._get("v1/bankaccounts")
+
+    # ── Categorias ───────────────────────────────────────────────────────────
+
+    def list_categories(self) -> dict:
+        return self._get("v1/categories")
+
+    # ── Serviços ─────────────────────────────────────────────────────────────
+
+    def list_services(self, limit: int = 50, page: int = 1, search: str = "") -> dict:
+        params = f"page={page}&size={min(limit, 100)}"
+        if search:
+            params += f"&search={search}"
+        return self._get("v1/services", params)
+
+    def get_service(self, id: str) -> dict:
+        return self._get(f"v1/services/{id}")
 
 
 if __name__ == "__main__":
