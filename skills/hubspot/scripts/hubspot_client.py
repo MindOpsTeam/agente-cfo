@@ -1,9 +1,28 @@
 #!/usr/bin/env python3
-"""HubSpot CRM Client — Agente CFO skill."""
+"""HubSpot CRM Client — Agente CFO skill.
+
+Suporta dois modos de autenticação:
+
+1. Private App Token (legacy):
+   HUBSPOT_TOKEN=<pat>
+
+2. OAuth 2.0 (Client Credentials + Refresh Token):
+   HUBSPOT_OAUTH_ACCESS_TOKEN=<access>
+   HUBSPOT_OAUTH_REFRESH_TOKEN=<refresh>
+   HUBSPOT_OAUTH_CLIENT_ID=<client_id>
+   HUBSPOT_OAUTH_CLIENT_SECRET=<client_secret>
+
+   Quando o access token expira (HTTP 401), o cliente faz refresh automático
+   e atualiza o token em memória. O daemon credentials_sync re-materializa
+   o .env periodicamente via edge function hubspot-oauth-refresh-tokens.
+"""
 
 import json
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import json as _json
 
@@ -11,21 +30,132 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "_lib"))
 from base import BaseCRMClient, http_request, emit, emit_error, now_iso, make_deal_item, make_list_response
 
 STAGES_CACHE = os.path.expanduser("~/.openclaw/secrets/hubspot_stages.json")
+OAUTH_ENDPOINT = "https://api.hubapi.com/oauth/v1/token"
+
+
+def _refresh_oauth_token(client_id: str, client_secret: str, refresh_token: str) -> str:
+    """
+    Troca o refresh_token por um novo access_token via HubSpot OAuth.
+    Retorna o novo access_token ou lança RuntimeError.
+    """
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "refresh_token": refresh_token,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        OAUTH_ENDPOINT,
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode())
+            new_token = data.get("access_token")
+            if not new_token:
+                raise RuntimeError(f"Refresh retornou sem access_token: {data}")
+            return new_token
+    except urllib.error.HTTPError as e:
+        body_text = e.read().decode()[:300]
+        raise RuntimeError(f"Erro no refresh OAuth HubSpot ({e.code}): {body_text}") from e
 
 
 class HubSpotClient(BaseCRMClient):
     SKILL_NAME = "hubspot"
     BASE_URL = "https://api.hubapi.com"
 
+    # ── Modo OAuth: guardado em memória após refresh ───────────────────────────
+    _oauth_access_token: str = ""
+    _oauth_refresh_token: str = ""
+    _oauth_client_id: str = ""
+    _oauth_client_secret: str = ""
+    _auth_mode: str = "private_app"   # "private_app" | "oauth"
+
     def _validate_env(self):
-        if not os.environ.get("HUBSPOT_TOKEN"):
-            raise RuntimeError("HUBSPOT_TOKEN nao definido. Execute connect.sh.")
-        self.token = os.environ["HUBSPOT_TOKEN"]
+        # ── Modo 1: Private App Token (HUBSPOT_TOKEN) ─────────────────────────
+        private_token = os.environ.get("HUBSPOT_TOKEN", "").strip()
+
+        # ── Modo 2: OAuth ─────────────────────────────────────────────────────
+        oauth_access  = os.environ.get("HUBSPOT_OAUTH_ACCESS_TOKEN", "").strip()
+        oauth_refresh = os.environ.get("HUBSPOT_OAUTH_REFRESH_TOKEN", "").strip()
+        oauth_cid     = os.environ.get("HUBSPOT_OAUTH_CLIENT_ID", "").strip()
+        oauth_secret  = os.environ.get("HUBSPOT_OAUTH_CLIENT_SECRET", "").strip()
+
+        if private_token:
+            self._auth_mode = "private_app"
+            self.token = private_token
+        elif oauth_access and oauth_refresh and oauth_cid and oauth_secret:
+            self._auth_mode = "oauth"
+            self._oauth_access_token  = oauth_access
+            self._oauth_refresh_token = oauth_refresh
+            self._oauth_client_id     = oauth_cid
+            self._oauth_client_secret = oauth_secret
+            self.token = oauth_access
+        else:
+            raise RuntimeError(
+                "HubSpot: nenhuma auth configurada. "
+                "Defina HUBSPOT_TOKEN (Private App) OU "
+                "HUBSPOT_OAUTH_ACCESS_TOKEN + HUBSPOT_OAUTH_REFRESH_TOKEN + "
+                "HUBSPOT_OAUTH_CLIENT_ID + HUBSPOT_OAUTH_CLIENT_SECRET."
+            )
+
         self.headers = {
             "Authorization": f"Bearer {self.token}",
             "Content-Type": "application/json",
         }
         self._stages = self._load_stages()
+
+    def _refresh_if_oauth(self) -> bool:
+        """
+        Se estiver em modo OAuth, tenta refresh e atualiza headers.
+        Retorna True se o token foi renovado, False se modo private_app.
+        Lança RuntimeError se o refresh falhar.
+        """
+        if self._auth_mode != "oauth":
+            return False
+        new_token = _refresh_oauth_token(
+            self._oauth_client_id,
+            self._oauth_client_secret,
+            self._oauth_refresh_token,
+        )
+        self._oauth_access_token = new_token
+        self.token = new_token
+        self.headers["Authorization"] = f"Bearer {new_token}"
+        # Tenta persistir no env pra que outros processos do mesmo .env se beneficiem
+        os.environ["HUBSPOT_OAUTH_ACCESS_TOKEN"] = new_token
+        # Tenta notificar o painel via edge function (best-effort, sem bloquear)
+        self._notify_panel_new_token(new_token)
+        return True
+
+    def _notify_panel_new_token(self, new_token: str) -> None:
+        """Envia novo access_token pro painel via edge function (best-effort)."""
+        panel_base = os.environ.get("PANEL_BASE_URL", "").rstrip("/")
+        panel_token = os.environ.get("PANEL_TOKEN", "")
+        hooks_token = os.environ.get("HOOKS_TOKEN", "")
+        if not all([panel_base, panel_token, hooks_token]):
+            return
+        try:
+            body = json.dumps({
+                "skill_name": "hubspot",
+                "access_token": new_token,
+            }).encode("utf-8")
+            req = urllib.request.Request(
+                f"{panel_base}/hubspot-oauth-refresh-tokens",
+                data=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Panel-Token": panel_token,
+                    "X-Hooks-Token": hooks_token,
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as _:
+                pass
+        except Exception:
+            pass  # Silencia — edge function pode não existir ainda
 
     def _load_stages(self):
         if os.path.exists(STAGES_CACHE):
@@ -45,7 +175,7 @@ class HubSpotClient(BaseCRMClient):
             pass
 
     def _fetch_stages(self):
-        data = http_request("GET", f"{self.BASE_URL}/crm/v3/pipelines/deals", headers=self.headers)
+        data = self._http("GET", f"{self.BASE_URL}/crm/v3/pipelines/deals")
         stages = {}
         results = data.get("results", []) if isinstance(data, dict) else []
         for pipeline in results:
@@ -55,9 +185,29 @@ class HubSpotClient(BaseCRMClient):
         self._save_stages(stages)
         return stages
 
+    def _http(self, method: str, url: str, body=None) -> dict:
+        """
+        Wrapper de http_request com auto-refresh OAuth em 401.
+        Tenta uma vez com o token atual; se receber 401 e for modo OAuth,
+        renova o token e tenta mais uma vez.
+        """
+        try:
+            return http_request(method, url, headers=self.headers, body=body)
+        except Exception as e:
+            # Detecta 401 pelo texto da exceção (http_request levanta RuntimeError/Exception)
+            err_str = str(e)
+            if "401" in err_str and self._auth_mode == "oauth":
+                try:
+                    self._refresh_if_oauth()
+                    # Segunda tentativa com novo token
+                    return http_request(method, url, headers=self.headers, body=body)
+                except Exception as refresh_err:
+                    raise RuntimeError(f"OAuth refresh falhou: {refresh_err}") from refresh_err
+            raise
+
     def _get(self, path):
         url = f"{self.BASE_URL}/{path}"
-        return http_request("GET", url, headers=self.headers)
+        return self._http("GET", url)
 
     def _resolve_stage(self, stage_id):
         if stage_id in self._stages:
@@ -101,18 +251,19 @@ class HubSpotClient(BaseCRMClient):
 
     def _put(self, path, body: dict):
         url = f"{self.BASE_URL}/{path}"
-        return http_request("PUT", url, headers=self.headers,
-                            body=_json.dumps(body).encode())
+        return self._http("PUT", url, body=_json.dumps(body).encode())
+
+    def _delete(self, path):
+        url = f"{self.BASE_URL}/{path}"
+        return self._http("DELETE", url)
 
     def _patch(self, path, body: dict):
         url = f"{self.BASE_URL}/{path}"
-        return http_request("PATCH", url, headers=self.headers,
-                            body=_json.dumps(body).encode())
+        return self._http("PATCH", url, body=_json.dumps(body).encode())
 
     def _post_json(self, path, body: dict):
         url = f"{self.BASE_URL}/{path}"
-        return http_request("POST", url, headers=self.headers,
-                            body=_json.dumps(body).encode())
+        return self._http("POST", url, body=_json.dumps(body).encode())
 
     def move_deal(self, id: str, to_stage: str) -> dict:
         raw = self._patch(f"crm/v3/objects/deals/{id}", {"properties": {"dealstage": to_stage}})
@@ -200,8 +351,7 @@ class HubSpotClient(BaseCRMClient):
         return {"success": True, "action": f"update_{object_type}", "id": obj_id, "raw": raw}
 
     def _delete_object(self, object_type: str, obj_id: str) -> dict:
-        url = f"{self.BASE_URL}/crm/v3/objects/{object_type}/{obj_id}"
-        http_request("DELETE", url, headers=self.headers)
+        self._delete(f"crm/v3/objects/{object_type}/{obj_id}")
         return {"success": True, "action": f"delete_{object_type}", "id": obj_id}
 
     # ── Contacts ───────────────────────────────────────────────────────────
@@ -444,13 +594,12 @@ class HubSpotClient(BaseCRMClient):
 
     def create_association(self, from_type: str, from_id: str, to_type: str, to_id: str, association_type_id: int) -> dict:
         body = [{"associationCategory": "HUBSPOT_DEFINED", "associationTypeId": association_type_id}]
-        raw = http_request("PUT", f"{self.BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}",
-                          headers=self.headers, body=_json.dumps(body).encode())
+        raw = self._put(f"crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}", body)
         return {"success": True, "action": "create_association", "raw": raw}
 
     def delete_association(self, from_type: str, from_id: str, to_type: str, to_id: str) -> dict:
         url = f"{self.BASE_URL}/crm/v4/objects/{from_type}/{from_id}/associations/{to_type}/{to_id}"
-        http_request("DELETE", url, headers=self.headers)
+        self._http("DELETE", url)
         return {"success": True, "action": "delete_association"}
 
     def batch_create_associations(self, from_type: str, to_type: str, inputs: list) -> dict:
@@ -473,7 +622,7 @@ class HubSpotClient(BaseCRMClient):
 
     def delete_association_label(self, from_type: str, to_type: str, label_id: int) -> dict:
         url = f"{self.BASE_URL}/crm/v4/associations/{from_type}/{to_type}/labels/{label_id}"
-        http_request("DELETE", url, headers=self.headers)
+        self._http("DELETE", url)
         return {"success": True, "action": "delete_association_label"}
 
     # ── Properties (extend) ───────────────────────────────────────────────
@@ -489,7 +638,7 @@ class HubSpotClient(BaseCRMClient):
 
     def delete_property(self, object_type: str, property_name: str) -> dict:
         url = f"{self.BASE_URL}/crm/v3/properties/{object_type}/{property_name}"
-        http_request("DELETE", url, headers=self.headers)
+        self._http("DELETE", url)
         return {"success": True, "action": "delete_property", "property": property_name}
 
     def list_property_groups(self, object_type: str) -> dict:
@@ -505,7 +654,7 @@ class HubSpotClient(BaseCRMClient):
 
     def delete_property_group(self, object_type: str, group_name: str) -> dict:
         url = f"{self.BASE_URL}/crm/v3/properties/{object_type}/groups/{group_name}"
-        http_request("DELETE", url, headers=self.headers)
+        self._http("DELETE", url)
         return {"success": True, "action": "delete_property_group"}
 
     # ── CRM Search (generic) ─────────────────────────────────────────────
@@ -721,7 +870,7 @@ class HubSpotClient(BaseCRMClient):
 
     def delete_pipeline(self, object_type: str, pipeline_id: str) -> dict:
         url = f"{self.BASE_URL}/crm/v3/pipelines/{object_type}/{pipeline_id}"
-        http_request("DELETE", url, headers=self.headers)
+        self._http("DELETE", url)
         return {"success": True, "action": "delete_pipeline", "id": pipeline_id}
 
     def get_pipeline_stage(self, object_type: str, pipeline_id: str, stage_id: str) -> dict:
@@ -735,7 +884,7 @@ class HubSpotClient(BaseCRMClient):
 
     def delete_pipeline_stage(self, object_type: str, pipeline_id: str, stage_id: str) -> dict:
         url = f"{self.BASE_URL}/crm/v3/pipelines/{object_type}/{pipeline_id}/stages/{stage_id}"
-        http_request("DELETE", url, headers=self.headers)
+        self._http("DELETE", url)
         return {"success": True, "action": "delete_pipeline_stage", "id": stage_id}
 
     # ── Communications ────────────────────────────────────────────────────
