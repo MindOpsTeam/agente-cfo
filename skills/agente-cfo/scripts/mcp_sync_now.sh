@@ -98,3 +98,9 @@ echo "  tail -50 ~/.agente-cfo/logs/credentials-sync.log"
 echo "  tail -50 ~/.agente-cfo/logs/supabase-sync.log"
 echo "  tail -50 ~/.agente-cfo/logs/mcp-sync.log"
 echo ""
+
+# Status final de todas as integrações
+STATUS_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/integration_status.sh"
+if [[ -f "$STATUS_SCRIPT" ]]; then
+    bash "$STATUS_SCRIPT"
+fi

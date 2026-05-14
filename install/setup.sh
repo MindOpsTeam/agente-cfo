@@ -1027,6 +1027,14 @@ export OMIE_SKILL_PATH="${HOME}/.openclaw/workspace/skills/omie"
 DOCTOR_EXIT=0
 bash "${SKILL_DEST}/scripts/doctor.sh" || DOCTOR_EXIT=$?
 
+# Smoke test de integrações MCP (Sprint 29)
+STATUS_SCRIPT="${SKILL_DEST}/scripts/integration_status.sh"
+if [[ -f "$STATUS_SCRIPT" ]]; then
+    step "Integration MCP status"
+    chmod +x "$STATUS_SCRIPT"
+    bash "$STATUS_SCRIPT" || true
+fi
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Resumo
 # ─────────────────────────────────────────────────────────────────────────────
