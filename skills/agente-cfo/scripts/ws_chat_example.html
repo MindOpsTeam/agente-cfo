@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>OpenClaw WS Debug — Painel CFO</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; }
+    h1 { color: #58a6ff; margin-bottom: 16px; font-size: 18px; }
+    .config { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .config input {
+      flex: 1; min-width: 200px; background: #161b22; border: 1px solid #30363d;
+      color: #c9d1d9; padding: 8px 12px; border-radius: 6px; font-family: monospace;
+    }
+    button {
+      background: #238636; color: #fff; border: none; padding: 8px 16px;
+      border-radius: 6px; cursor: pointer; font-family: monospace;
+    }
+    button:hover { background: #2ea043; }
+    button.danger { background: #da3633; }
+    button.danger:hover { background: #f85149; }
+    #log {
+      background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+      padding: 12px; height: 400px; overflow-y: auto; margin-bottom: 12px;
+      font-size: 13px; line-height: 1.6;
+    }
+    .line { padding: 2px 0; border-bottom: 1px solid #21262d; }
+    .line.send { color: #56d364; }
+    .line.recv { color: #79c0ff; }
+    .line.event { color: #d2a8ff; }
+    .line.error { color: #f85149; }
+    .line.info { color: #e3b341; }
+    .chat-area { display: flex; gap: 8px; }
+    .chat-area input {
+      flex: 1; background: #161b22; border: 1px solid #30363d;
+      color: #c9d1d9; padding: 8px 12px; border-radius: 6px; font-family: monospace;
+    }
+    #status { margin-bottom: 8px; font-size: 13px; }
+    .status-ok { color: #56d364; }
+    .status-err { color: #f85149; }
+    .status-conn { color: #e3b341; }
+    #stream-output {
+      background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+      padding: 12px; min-height: 80px; margin-bottom: 12px; white-space: pre-wrap;
+      font-size: 14px; color: #c9d1d9;
+    }
+    label { font-size: 12px; color: #8b949e; display: block; margin-bottom: 4px; }
+    .section { margin-bottom: 16px; }
+    hr { border: none; border-top: 1px solid #30363d; margin: 16px 0; }
+  </style>
+</head>
+<body>
+  <h1>🦞 OpenClaw WebSocket Debug — Painel CFO</h1>
+  <p style="color:#8b949e;font-size:12px;margin-bottom:16px">
+    Testador standalone para protocolo WS do gateway. Investigado no Sprint 31.
+  </p>
+
+  <div class="section">
+    <label>Gateway URL (ws:// ou wss://)</label>
+    <div class="config">
+      <input id="url" value="ws://localhost:18789" placeholder="ws://localhost:18789" />
+      <input id="token" placeholder="gateway.auth.token (48 chars hex)" type="password" />
+      <button onclick="connect()">Conectar</button>
+      <button class="danger" onclick="disconnect()">Desconectar</button>
+    </div>
+  </div>
+
+  <div id="status" class="status-err">● Desconectado</div>
+
+  <div id="log"></div>
+
+  <hr />
+  <h2 style="color:#58a6ff;font-size:14px;margin-bottom:8px">Chat (tools/invoke HTTP)</h2>
+  <p style="color:#8b949e;font-size:12px;margin-bottom:8px">
+    Usa POST /tools/invoke que funciona com token simples (sem device pairing).
+  </p>
+  <div class="chat-area" style="margin-bottom:8px">
+    <input id="msg" placeholder="Mensagem para Marcos..." />
+    <button onclick="sendHTTP()">Enviar HTTP</button>
+  </div>
+  <div id="stream-output">Resposta aparece aqui...</div>
+
+  <hr />
+  <h2 style="color:#58a6ff;font-size:14px;margin-bottom:8px">WS — chat.send (requer device token)</h2>
+  <div class="chat-area">
+    <input id="ws-msg" placeholder="Mensagem via WS..." />
+    <button onclick="sendWS()">Enviar WS</button>
+  </div>
+
+  <script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let ws = null;
+  let connected = false;
+  let msgCounter = 0;
+
+  // ── Logging ────────────────────────────────────────────────────────────────
+  function log(text, cls = '') {
+    const div = document.getElementById('log');
+    const line = document.createElement('div');
+    line.className = 'line ' + cls;
+    const ts = new Date().toTimeString().slice(0,8);
+    line.textContent = `[${ts}] ${text}`;
+    div.appendChild(line);
+    div.scrollTop = div.scrollHeight;
+  }
+
+  function setStatus(text, cls) {
+    const el = document.getElementById('status');
+    el.textContent = text;
+    el.className = cls;
+  }
+
+  // ── WS Connection ──────────────────────────────────────────────────────────
+  function connect() {
+    const url = document.getElementById('url').value.trim();
+    if (!url) return log('URL obrigatória', 'error');
+    if (ws) disconnect();
+
+    log(`Conectando em ${url}...`, 'info');
+    setStatus('● Conectando...', 'status-conn');
+
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      log('WebSocket aberto — aguardando challenge...', 'info');
+    };
+
+    ws.onmessage = (e) => {
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { log('Raw: ' + e.data.slice(0,200), 'recv'); return; }
+
+      const t = msg.type, ev = msg.event || '';
+      log(`← [${t}:${ev}] ${JSON.stringify(msg).slice(0,200)}`, 'recv');
+
+      // Trata challenge automaticamente
+      if (t === 'event' && ev === 'connect.challenge') {
+        const token = document.getElementById('token').value.trim();
+        if (!token) { log('⚠️ Token não preenchido — connect sem auth', 'error'); }
+        sendConnect(token);
+        return;
+      }
+
+      // hello-ok
+      if (t === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
+        connected = true;
+        const scopes = msg.payload?.auth?.scopes || '(none — token simples)';
+        setStatus('● Conectado ✓', 'status-ok');
+        log(`✓ hello-ok | protocol=${msg.payload.protocol} | scopes=${JSON.stringify(scopes)}`, 'info');
+        return;
+      }
+
+      // hello-ok sem auth (scopes não concedidos)
+      if (t === 'res' && msg.ok && msg.payload?.type === 'hello-ok') {
+        connected = true;
+        setStatus('● Conectado (sem escrita)', 'status-conn');
+        return;
+      }
+
+      if (t === 'res' && !msg.ok) {
+        log(`✗ Error: ${msg.error?.message}`, 'error');
+        if (msg.error?.code === 'INVALID_REQUEST') {
+          setStatus('● Auth falhou', 'status-err');
+        }
+      }
+    };
+
+    ws.onerror = (e) => {
+      log('WebSocket error', 'error');
+      setStatus('● Erro de conexão', 'status-err');
+    };
+
+    ws.onclose = (e) => {
+      connected = false;
+      log(`WebSocket fechado (code=${e.code} reason=${e.reason || 'none'})`, 'error');
+      setStatus('● Desconectado', 'status-err');
+    };
+  }
+
+  function disconnect() {
+    if (ws) { ws.close(); ws = null; connected = false; }
+    setStatus('● Desconectado', 'status-err');
+  }
+
+  function sendConnect(token) {
+    const req = {
+      type: 'req',
+      id: 'connect-1',
+      method: 'connect',
+      params: {
+        minProtocol: 3,
+        maxProtocol: 3,
+        client: {
+          id: 'cli',           // "cli" é o único que funciona com token simples
+          version: '1.0.0',
+          platform: 'macos',
+          mode: 'cli'
+        },
+        role: 'operator',
+        scopes: ['operator.read', 'operator.write'],
+        caps: [],
+        commands: [],
+        permissions: {},
+        auth: { token },
+        locale: 'pt-BR',
+        userAgent: 'painel-cfo-debug/1.0'
+      }
+    };
+    log(`→ connect (id=cli, mode=cli, token=${token ? '***' : 'vazio'})`, 'send');
+    ws.send(JSON.stringify(req));
+  }
+
+  function sendWS() {
+    const msg = document.getElementById('ws-msg').value.trim();
+    if (!msg) return;
+    if (!connected) { log('Não conectado!', 'error'); return; }
+
+    const id = `msg-${++msgCounter}`;
+    const req = {
+      type: 'req',
+      id,
+      method: 'chat.send',
+      params: {
+        sessionKey: 'agent:main:main',
+        message: msg
+      }
+    };
+    log(`→ chat.send: "${msg}"`, 'send');
+    ws.send(JSON.stringify(req));
+    document.getElementById('ws-msg').value = '';
+  }
+
+  // ── HTTP /tools/invoke ────────────────────────────────────────────────────
+  async function sendHTTP() {
+    const msg = document.getElementById('msg').value.trim();
+    const token = document.getElementById('token').value.trim();
+    const urlBase = document.getElementById('url').value
+      .replace(/^ws/, 'http').replace(/\/$/, '');
+
+    if (!msg) return;
+    if (!token) { log('Token obrigatório para HTTP', 'error'); return; }
+
+    const outputEl = document.getElementById('stream-output');
+    outputEl.textContent = '⏳ Aguardando resposta...';
+    log(`→ POST /tools/invoke | sessions_send | "${msg}"`, 'send');
+
+    try {
+      // Tenta sessions_send (pode estar na deny list)
+      // Fallback: usa session_status para verificar
+      const resp = await fetch(`${urlBase}/tools/invoke`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          tool: 'sessions_send',
+          args: {
+            sessionKey: 'agent:main:main',
+            message: msg,
+            timeoutSeconds: 30
+          }
+        })
+      });
+
+      const data = await resp.json();
+      if (data.ok) {
+        const text = data.result?.content?.[0]?.text || JSON.stringify(data.result);
+        outputEl.textContent = text;
+        log(`← tools/invoke OK`, 'recv');
+      } else {
+        // sessions_send na deny list → tenta via HTTP agent endpoint
+        const errMsg = data.error?.message || JSON.stringify(data.error);
+        log(`← tools/invoke failed: ${errMsg}`, 'error');
+        outputEl.textContent = `⚠️ sessions_send bloqueado (deny list).\n\nUse o fluxo atual:\nPainel → chat-send-message edge fn → /hooks/agent → Marcos → panel_reply\n\nPara habilitar WS direto: dangerouslyDisableDeviceAuth=true`;
+      }
+    } catch (e) {
+      outputEl.textContent = 'Erro: ' + e.message;
+      log('Erro HTTP: ' + e.message, 'error');
+    }
+  }
+
+  // Enter para enviar
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const focused = document.activeElement?.id;
+      if (focused === 'msg') sendHTTP();
+      if (focused === 'ws-msg') sendWS();
+    }
+  });
+  </script>
+</body>
+</html>
