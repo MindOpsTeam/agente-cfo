@@ -684,7 +684,30 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync."
+# Unit cfo-telegram-sync — Telegram Bots Sync (Sprint 34)
+_TELEGRAM_SYNC_SCRIPT="${HOME}/.openclaw/workspace/skills/telegram/scripts/telegram_sync.py"
+cat > /etc/systemd/system/cfo-telegram-sync.service << EOF
+[Unit]
+Description=Agente CFO - Telegram Bots Sync
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_TELEGRAM_SYNC_SCRIPT}
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -881,6 +904,14 @@ chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/connect.sh" 2>/dev/nu
 chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/doctor.sh" 2>/dev/null || true
 systemctl enable --now cfo-evolution-sync 2>/dev/null || warn "systemctl enable cfo-evolution-sync falhou."
 ok "cfo-evolution-sync.service iniciado (sync WhatsApp multi-instância a cada ${EVOLUTION_SYNC_INTERVAL_S:-30}s)."
+
+# Instalar skill telegram e iniciar daemon (Sprint 34)
+_install_skill_from_repo "telegram"
+chmod +x "${HOME}/.openclaw/workspace/skills/telegram/scripts/send_telegram.sh" 2>/dev/null || true
+chmod +x "${HOME}/.openclaw/workspace/skills/telegram/connect.sh" 2>/dev/null || true
+chmod +x "${HOME}/.openclaw/workspace/skills/telegram/doctor.sh" 2>/dev/null || true
+systemctl enable --now cfo-telegram-sync 2>/dev/null || warn "systemctl enable cfo-telegram-sync falhou."
+ok "cfo-telegram-sync.service iniciado (sync Telegram bots a cada ${TELEGRAM_SYNC_INTERVAL_S:-30}s)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
