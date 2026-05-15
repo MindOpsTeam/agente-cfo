@@ -36,6 +36,12 @@
 #   service_logs        { service, lines? }
 #   mcp_sync_now
 #   self_update
+#   whatsapp_pair_start  (inicia pareamento Baileys via OpenClaw nativo)
+#   whatsapp_pair_status (retorna estado do pareamento)
+#   whatsapp_pair_qr     (retorna QR ASCII art para escaneamento)
+#   whatsapp_pair_cancel (cancela processo de pareamento)
+#   whatsapp_status      (status do canal WhatsApp no gateway)
+#   whatsapp_send        { chat_id, text }
 
 set -euo pipefail
 
@@ -311,6 +317,69 @@ except:
         OUT=$(bash "$SCRIPT" 2>&1) && _ok "$OUT" || _err "$OUT"
         ;;
 
+    # ── WhatsApp Baileys (Sprint 51) ───────────────────────────────────────────
+    whatsapp_pair_start)
+        HELPER="${WORKSPACE}/whatsapp_pair_helper.py"
+        if [[ ! -f "$HELPER" ]]; then
+            _err "whatsapp_pair_helper.py não encontrado"
+            exit 0
+        fi
+        OUT=$(python3 "$HELPER" start 2>/dev/null) && _ok "$OUT" || _err "Falha ao iniciar pareamento"
+        ;;
+
+    whatsapp_pair_status)
+        HELPER="${WORKSPACE}/whatsapp_pair_helper.py"
+        if [[ ! -f "$HELPER" ]]; then
+            _err "whatsapp_pair_helper.py não encontrado"
+            exit 0
+        fi
+        OUT=$(python3 "$HELPER" status 2>/dev/null) && _ok "$OUT" || _err "Falha ao ler status"
+        ;;
+
+    whatsapp_pair_qr)
+        # Retorna o QR ASCII art se status=qr_ready
+        STATE_FILE="/tmp/cfo-whatsapp-pair.json"
+        if [[ ! -f "$STATE_FILE" ]]; then
+            _err "Nenhum pareamento em andamento (arquivo de estado não encontrado)"
+            exit 0
+        fi
+        STATUS=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('status','idle'))" 2>/dev/null || echo "")
+        if [[ "$STATUS" == "qr_ready" ]]; then
+            QR=$(python3 -c "import json; d=json.load(open('$STATE_FILE')); print(d.get('qr_ascii',''))" 2>/dev/null || echo "")
+            _ok "$QR"
+        elif [[ "$STATUS" == "connected" ]]; then
+            _ok '{"status":"connected","message":"WhatsApp já conectado — não há QR para mostrar"}'
+        else
+            _err "QR não disponível (status: $STATUS). Execute whatsapp_pair_start primeiro."
+        fi
+        ;;
+
+    whatsapp_pair_cancel)
+        HELPER="${WORKSPACE}/whatsapp_pair_helper.py"
+        if [[ ! -f "$HELPER" ]]; then
+            _err "whatsapp_pair_helper.py não encontrado"
+            exit 0
+        fi
+        OUT=$(python3 "$HELPER" cancel 2>/dev/null) && _ok "$OUT" || _err "Falha ao cancelar"
+        ;;
+
+    whatsapp_status)
+        OUT=$(openclaw channels status 2>&1) && _ok "$OUT" || _err "$OUT"
+        ;;
+
+    whatsapp_send)
+        CHAT_ID="$(_get chat_id)"
+        TEXT="$(_get text)"
+        [[ -z "$CHAT_ID" || -z "$TEXT" ]] && { _err "chat_id e text obrigatórios"; exit 0; }
+        # Valida chat_id: apenas dígitos, letras, @ e +
+        if ! echo "$CHAT_ID" | grep -qE '^[0-9@+.a-zA-Z_-]+$'; then
+            _err "chat_id inválido"
+            exit 0
+        fi
+        # Usa openclaw agent para enviar (via sessions_send ou message send)
+        OUT=$(openclaw message send --to "$CHAT_ID" --text "$TEXT" 2>&1) && _ok "$OUT" || _err "$OUT"
+        ;;
+
     # ── Ação desconhecida ──────────────────────────────────────────────────────
     *)
         VALID_ACTIONS=(
@@ -321,6 +390,8 @@ except:
             "openclaw_status" "openclaw_health" "openclaw_doctor"
             "systemctl_restart" "systemctl_start" "systemctl_stop" "systemctl_status"
             "service_logs" "mcp_sync_now" "self_update"
+            "whatsapp_pair_start" "whatsapp_pair_status" "whatsapp_pair_qr"
+            "whatsapp_pair_cancel" "whatsapp_status" "whatsapp_send"
         )
         VALID_STR=$(printf '"%s" ' "${VALID_ACTIONS[@]}")
         _err "ação '$ACTION' desconhecida. Actions válidas: ${VALID_STR}"
