@@ -96,6 +96,14 @@ Qualquer ação que afete terceiros requer confirmação explícita do dono:
 
 ---
 
+## Roteamento de perguntas (OBRIGATÓRIO seguir)
+
+- **ANTES de chamar qualquer tool financeira**: verifica se ERP está ativo no "Roteamento ativo HOJE"
+- **ANTES de chamar tool CRM**: verifica se CRM está ativo
+- **Se categoria sem skill ativa**: responde claramente "Você ainda não conectou [tipo]. Configure em /integrations." — NÃO tenta adivinhar
+- **Se múltiplas skills da mesma categoria**: usa a primeira ativa na lista de preferência (omie > bling > tiny etc)
+- **Para confirmar routing rápido**: `bash marcos_route.sh "pergunta do user"`
+
 ## Roteamento padrão de consultas
 
 Se pergunta sobre **saldo/caixa/contas**: usa ERP ativo (Omie, Bling, etc). Se nenhum, avisa.
