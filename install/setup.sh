@@ -195,6 +195,16 @@ fi
 npm install -g openclaw@latest 2>&1 | tail -3 || fail "Falha ao instalar OpenClaw."
 ok "OpenClaw: $(openclaw --version 2>/dev/null | head -1)"
 
+# Sprint 51 — Instala plugin WhatsApp nativo (Baileys via @openclaw/whatsapp)
+step "2a/13 — Plugin WhatsApp nativo (@openclaw/whatsapp)"
+if ! openclaw plugins list 2>/dev/null | grep -q "whatsapp"; then
+    openclaw plugins install @openclaw/whatsapp 2>&1 | tail -3 || \
+        warn "Falha ao instalar @openclaw/whatsapp — WhatsApp Baileys pode não funcionar"
+    ok "Plugin @openclaw/whatsapp instalado"
+else
+    ok "Plugin @openclaw/whatsapp já instalado"
+fi
+
 # Sprint 36 — Pre-instala pacotes npm dos MCP servers populares (evita cold-start por download)
 step "2b/13 — Pre-instalando npm packages de MCP servers"
 npm install -g --prefer-offline @supabase/mcp-server-supabase@latest 2>&1 | tail -3 \
