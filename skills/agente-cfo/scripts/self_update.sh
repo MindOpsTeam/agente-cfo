@@ -66,6 +66,7 @@ declare -A UNIT_SCRIPTS=(
     ["cfo-telegram-sync"]="${WORKSPACE_SKILLS}/telegram/scripts/telegram_sync.py"
     ["cfo-mcp-warmer"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/mcp_warmer.py"
     ["cfo-metrics-publisher"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/metrics_publisher.py"
+    ["cfo-alerts-checker"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/alerts_checker.py"
 )
 
 for unit_name in "${!UNIT_SCRIPTS[@]}"; do
@@ -106,7 +107,7 @@ done
 
 # ── 5. Restart daemons ────────────────────────────────────────────────────────
 log "Reiniciando daemons..."
-DAEMONS=(cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync cfo-evolution-sync cfo-telegram-sync cfo-mcp-warmer cfo-metrics-publisher)
+DAEMONS=(cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync cfo-evolution-sync cfo-telegram-sync cfo-mcp-warmer cfo-metrics-publisher cfo-alerts-checker)
 for daemon in "${DAEMONS[@]}"; do
     systemctl restart "${daemon}" 2>/dev/null && log "  restart ${daemon}" || warn "  ${daemon} não pôde ser reiniciado"
 done
