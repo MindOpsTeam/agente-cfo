@@ -1,427 +1,273 @@
 # Troubleshooting — Agente CFO
 
-Guia de diagnóstico para os problemas mais comuns. Para cada problema: sintoma, causa provável e solução.
-
-> **Dica:** Comece sempre pelo diagnóstico automático:
-> ```bash
-> bash ~/.openclaw/workspace/skills/agente-cfo/scripts/doctor.sh
-> ```
-> O output indica com `✅` / `❌` / `⚠️` o estado de cada componente.
+Diagnóstico rápido dos problemas mais comuns.
 
 ---
 
-## 1. WhatsApp não pareia
+## VPS offline / heartbeat parou
 
-### Sintoma
-O QR code aparece mas o pareamento falha, ou o setup trava em "Aguardando pareamento...".
+**Sintoma**: painel mostra "VPS offline" ou "Marcos indisponível".
 
-### Causas e soluções
-
-**QR code expirou antes de escanear**  
-O QR expira em ~20 segundos. O `wacli` gera um novo automaticamente. Tente mais rápido ou aproxime mais o celular.
-
-**Número já conectado em outro dispositivo**  
-O WhatsApp só permite 1 pareamento `wacli` por número. Se o número já está pareado em outro lugar, desconecte primeiro:
-```
-WhatsApp → Aparelhos conectados → [seu aparelho wacli] → Desconectar
-```
-
-**App WhatsApp desatualizado**  
-Atualize o WhatsApp no celular. Versões antigas às vezes não leem o QR gerado pelo `wacli`.
-
-**Número de chip novo (restrição Meta)**  
-Chips novos ativados há menos de 24h podem ter restrições de pareamento de aparelhos vinculados. Aguarde 24h.
-
-**Verificar status atual do pareamento:**
+**Diagnóstico**:
 ```bash
-wacli status
-```
-Output esperado: `{"connected": true, "phone": "+55119..."}`.
-
----
-
-## 2. Setup.sh aborta no PASSO X
-
-### Como identificar o passo
-O output mostra `[CFO] PASSO X/13 — ...` antes do erro. Cada passo e suas falhas comuns:
-
-**PASSO 1 — Dependências do sistema**
-```
-Causa: apt falhando, VPS sem internet, permissão negada.
-Solução: rode `sudo apt update` manualmente. Confira se tem acesso root.
-```
-
-**PASSO 2 — Node.js / OpenClaw**
-```
-Causa: versão do Node.js incompatível (precisa v18+).
-Diagnóstico: node --version
-Solução: instale via nvm:
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-  source ~/.bashrc
-  nvm install 20
-  nvm use 20
-```
-
-**PASSO 4 — PANEL_BASE_URL inválida**
-```
-Causa: URL no formato errado ou sem /functions/v1 no final.
-Formato correto: https://<ref>.supabase.co/functions/v1
-```
-
-**PASSO 5 — Gateway não sobe**
-```
-Causa: porta 18789 ocupada, config corrompida, secrets ausentes.
-Diagnóstico:
-  openclaw gateway status
-  openclaw status
-Solução: veja seção 3 abaixo.
-```
-
-**PASSO 7 — Pareamento WhatsApp**
-```
-Causa: QR expirou, número bloqueado. Veja seção 1 acima.
-```
-
-**PASSO 8 — Cloudflare Tunnel**
-```
-Causa: cloudflared não instalado, sem internet, firewall bloqueando.
-Veja seção 4 abaixo.
-```
-
-**PASSO 11 — Skill agente-cfo**
-```
-Causa: falha no clone do monorepo (repo privado? sem git? sem internet?).
-Diagnóstico:
-  git clone --depth 1 https://github.com/MindOpsTeam/agente-cfo.git /tmp/test-clone
-  rm -rf /tmp/test-clone
-```
-
-**Passo genérico — .env ausente ou incompleto**
-```
-Diagnóstico:
-  cat ~/.agente-cfo/.env
-Variáveis obrigatórias:
-  ANTHROPIC_API_KEY, CFO_WHATSAPP_TO, CFO_ERP_NAME, PANEL_BASE_URL, PANEL_TOKEN
-```
-
-Para reexecutar o setup a partir do zero (idempotente):
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/setup.sh)
-```
-
----
-
-## 3. Gateway não sobe
-
-### Sintoma
-`openclaw gateway status` retorna `inactive` ou `failed`. Marcos não responde nada.
-
-### Diagnóstico
-
-```bash
-# Ver status do serviço systemd
+# Na VPS
 systemctl status openclaw-gateway
-
-# Ver logs recentes
-journalctl -u openclaw-gateway -n 50 --no-pager
-
-# Verificar config do gateway
-openclaw status
+systemctl status cloudflared-cfo
+journalctl -u openclaw-gateway -n 20 --no-pager
 ```
 
-### Causas comuns
+**Soluções**:
+```bash
+# Gateway caiu
+systemctl restart openclaw-gateway
 
-**`gateway.mode` ausente na config**  
-O gateway precisa de um modo definido. Verifique:
-```bash
-openclaw config get gateway.mode
-```
-Se vazio, defina:
-```bash
-openclaw config set gateway.mode agent
-```
+# Tunnel Cloudflare caiu
+systemctl restart cloudflared-cfo
 
-**Secrets do OpenClaw ausentes ou corrompidos**  
-```bash
-ls ~/.openclaw/secrets/
-# Deve ter: openclaw.env ou similar com ANTHROPIC_API_KEY
+# Config corrompida → auto-rollback
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/auto_rollback.sh
+
+# Todos os serviços
+systemctl restart openclaw-gateway cloudflared-cfo cfo-automation-engine
 ```
 
-**Porta 18789 já em uso**  
+**Via painel** (se o tunnel ainda responde): Configurações → Sistema → "Reiniciar Gateway"
+
+---
+
+## Chat web não responde / Marcos demora demais
+
+**Sintoma**: mensagem enviada, resposta nunca chega ou demora >120s.
+
+**Diagnóstico**:
 ```bash
-lsof -i :18789
-# Se outro processo estiver usando, kill ele antes de subir o gateway
+# Vê runs ativos
+openclaw health
+
+# Vê fila do agente
+openclaw status | grep Queue
+
+# Timeout? Vê logs
+journalctl -u openclaw-gateway -n 50 --no-pager | grep -E "error|timeout|fail"
 ```
 
-**Reiniciar o gateway:**
+**Soluções**:
 ```bash
-openclaw gateway restart
-# Aguardar 5 segundos
-openclaw gateway status
+# Limpa fila travada
+systemctl restart openclaw-gateway
+
+# MCP server travado? Pre-warm forçado
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/mcp_sync_now.sh
+
+# Verifica MCPs
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/integration_status.sh
 ```
 
 ---
 
-## 4. Tunnel Cloudflare sem URL
+## Integração ERP não funciona
 
-### Sintoma
-O setup pede pra esperar a URL do tunnel e ela nunca aparece. Ou o tunnel sobe mas a URL muda a cada restart (tunnel efêmero).
+**Sintoma**: "Não consegui acessar seu ERP" ou "credenciais inválidas".
 
-### Diagnóstico
-
+**Diagnóstico**:
 ```bash
-systemctl status cloudflared
-journalctl -u cloudflared -n 30 --no-pager
+# Vê se credenciais foram materializadas
+cat ~/.openclaw/secrets/omie.env
+ls -la ~/.openclaw/secrets/
+
+# Vê log do credentials-sync
+journalctl -u cfo-credentials-sync -n 20 --no-pager
 ```
 
-### Causas e soluções
+**Soluções**:
+1. Painel → Configurações → Integrações → confirma que as credenciais estão salvas
+2. Aguarda 3min (cfo-credentials-sync sincroniza a cada 3min)
+3. Ou: `systemctl restart cfo-credentials-sync`
+4. Testa smoke: `bash ~/.openclaw/workspace/skills/agente-cfo/scripts/integration_smoke.sh omie`
 
-**`cloudflared` não instalado**  
+---
+
+## WhatsApp QR não aparece / não conecta
+
+**Sintoma**: painel mostra QR pendente mas não atualiza, ou status não vira "connected".
+
+**Diagnóstico**:
 ```bash
-which cloudflared || apt install cloudflared
+journalctl -u cfo-evolution-sync -n 30 --no-pager
+# Procura por "getMe OK" ou erros de API key
 ```
 
-**Firewall bloqueando saída na porta 7844 (Cloudflare)**  
-O cloudflared precisa de saída TCP nas portas 7844 e 443. Verifique com:
+**Soluções**:
+1. Verifica que Evolution API está online: `curl https://sua-evolution.com/instance/fetchInstances -H "apikey: SEU_KEY"`
+2. Painel → Configurações → WhatsApp → "Forçar Sync"
+3. Se QR expirou: no painel, clique em "Gerar novo QR"
+4. `systemctl restart cfo-evolution-sync`
+
+---
+
+## Telegram bot não responde
+
+**Sintoma**: mensagem enviada para o bot, sem resposta do Marcos.
+
+**Diagnóstico**:
 ```bash
-curl -v https://api.cloudflare.com/client/v4/ips 2>&1 | head -5
+journalctl -u cfo-telegram-sync -n 20 --no-pager
+# Procura por "webhook registrado" ou erros
 ```
 
-**Tunnel efêmero (URL muda todo restart)**  
-O setup usa tunnel efêmero por padrão. Isso é intencional para o MVP. Se quiser uma URL fixa, configure um tunnel nomeado via `cloudflared tunnel create agente-cfo` com conta Cloudflare. A URL do painel (`ingress_url`) precisa ser atualizada após cada reinicialização neste caso.
+**Soluções**:
+1. Vê se bot token é válido: `curl https://api.telegram.org/botSEU_TOKEN/getMe`
+2. `systemctl restart cfo-telegram-sync`
+3. Painel → Configurações → Telegram → "Reconectar bot"
 
-**Verificar URL ativa do tunnel:**
+---
+
+## MCP server timeout / tool call falhou
+
+**Sintoma**: Marcos diz "não consegui acessar o HubSpot/Omie/etc".
+
+**Diagnóstico**:
 ```bash
-grep INGRESS_URL ~/.agente-cfo/instance.env
+# Testa MCP específico
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/integration_smoke.sh hubspot
+
+# Vê logs de warm
+tail -50 ~/.agente-cfo/logs/mcp-warmer.log
+```
+
+**Soluções**:
+```bash
+# Força warm imediato
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/mcp_sync_now.sh
+
+# Verifica credenciais do MCP
+cat ~/.openclaw/secrets/hubspot.env
+
+# Reinstala dependência Python (se mcp_server.py quebrou)
+source /opt/agente-cfo/.venv/bin/activate
+pip install --upgrade mcp
 ```
 
 ---
 
-## 5. OAuth Bling / ContaAzul falha
+## Daemon CFO em loop de restart
 
-### Sintoma
-`connect.sh` retorna `Falha ao obter tokens` ou a API responde 401/400 após o authorization code.
+**Sintoma**: `systemctl status cfo-*` mostra "activating (start)" repetidamente; `NRestarts` alto.
 
-### Causas e soluções
-
-**Client ID ou Client Secret incorretos**  
-Copie novamente do painel de developers do sistema. Não confunda com o ID de integração (são diferentes).
-
-**Redirect URI mismatch**  
-O app OAuth precisa ter exatamente `urn:ietf:wg:oauth:2.0:oob` no campo de Redirect URI. Qualquer espaço ou caractere extra quebra.
-
-**Authorization code expirado**  
-O código gerado após autorizar no browser tem validade curta (~60 segundos no Bling). Cole-o imediatamente no terminal.
-
-**Refresh token inválido após período longo sem uso**  
-Bling e ContaAzul podem invalidar o refresh token após longos períodos de inatividade. Reconecte:
+**Diagnóstico**:
 ```bash
-# Bling
-bash ~/.openclaw/workspace/skills/bling/scripts/connect.sh --force
-
-# ContaAzul
-bash ~/.openclaw/workspace/skills/contaazul/scripts/connect.sh --force
+journalctl -u cfo-automation-engine -n 50 --no-pager
+systemctl show cfo-automation-engine --property=NRestarts,Result
 ```
 
-**Verificar token atual:**
+**Soluções**:
 ```bash
-# Ver expiração
-grep TOKEN_EXPIRY ~/.openclaw/secrets/bling.env
-python3 -c "import time; e=int(open('$HOME/.openclaw/secrets/bling.env').read().split('BLING_TOKEN_EXPIRY=')[1].split()[0]); print(f'Expira em {int((e-time.time())/60)} min')"
+# Vê o erro específico
+journalctl -u cfo-automation-engine -p err -n 20 --no-pager
+
+# Se é erro de config/script (temporário)
+systemctl reset-failed cfo-automation-engine
+systemctl start cfo-automation-engine
+
+# Se é loop grave (>10 restarts/24h)
+# health_doctor.py vai PARAR o service — este é o comportamento esperado
+# Veja o log do health-doctor para entender o diagnóstico
+tail -30 ~/.agente-cfo/logs/health-doctor.log
 ```
 
 ---
 
-## 6. Marcos não responde no WhatsApp
+## Alertas não disparam
 
-### Sintoma
-Você manda mensagem no WhatsApp mas não recebe resposta. Ou a resposta demora mais de 30 segundos.
+**Sintoma**: condição configurada está sendo atendida mas sem notificação.
 
-### Diagnóstico em ordem
-
+**Diagnóstico**:
 ```bash
-# 1. Gateway está rodando?
-openclaw gateway status
-
-# 2. wacli-inbound está rodando?
-systemctl status wacli-inbound
-journalctl -u wacli-inbound -n 20 --no-pager
-
-# 3. WhatsApp ainda pareado?
-wacli status
-
-# 4. API key Anthropic válida?
-grep ANTHROPIC_API_KEY ~/.agente-cfo/.env
-
-# 5. Testar a Anthropic diretamente
-curl https://api.anthropic.com/v1/messages \
-  -H "x-api-key: $(grep ANTHROPIC_API_KEY ~/.agente-cfo/.env | cut -d= -f2)" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-haiku-20240307","max_tokens":10,"messages":[{"role":"user","content":"ping"}]}'
+tail -30 ~/.agente-cfo/logs/alerts-checker.log
+# Procura por "[check] ALERTA" ou "[check] em cooldown"
 ```
 
-### Causas comuns
+**Causas comuns**:
+1. **Cooldown ativo** (padrão 30min): aguarda ou reduz `condition.cooldown_min` no painel
+2. **Edge fn `alerts-config-vps-list` não deployada**: `[] alertas` no log → deploy pendente
+3. **Canal de notificação mal configurado**: veja formato `whatsapp:instance:phone`
+4. **Métricas não chegando**: verifica `~/.agente-cfo/logs/metrics.jsonl`
 
-**Gateway caiu** → `openclaw gateway restart`
+---
 
-**wacli-inbound parado:**
+## Custo Anthropic alto inesperado
+
+**Diagnóstico**:
 ```bash
-systemctl restart wacli-inbound
-journalctl -u wacli-inbound -f   # acompanhar logs em tempo real
+python3 ~/.openclaw/workspace/skills/agente-cfo/scripts/cost_estimator.py
 ```
 
-**WhatsApp despareado (sessão expirou):**
+**Causas comuns**:
+1. Automação em loop (faz muitas chamadas LLM)
+2. Context muito grande (>500k tokens por sessão)
+3. Heartbeat/proactive muito frequente
+
+**Soluções**:
+1. Painel → Alertas → configura `cost_budget` com threshold adequado
+2. Aumenta intervalo do heartbeat: `openclaw config set agents.defaults.heartbeat.intervalMinutes 60`
+3. Compacta contexto: Marcos pode ser instruído a fazer `/compactar` periodicamente
+
+---
+
+## "User already registered" no painel
+
+**Sintoma**: tentativa de login ou signup dá esse erro.
+
+**Solução**: use "Esqueci minha senha" na tela de login. Single-tenant: 1 conta por painel.
+
+---
+
+## openclaw.json corrompido → gateway não sobe
+
+**Diagnóstico**:
 ```bash
-wacli qr   # gera novo QR para reparear
+openclaw config validate
+# Se inválido:
 ```
 
-**Anthropic API Key inválida ou com saldo zerado**  
-Verifique em [console.anthropic.com](https://console.anthropic.com) → Usage / API Keys.
-
-**Número errado no CFO_WHATSAPP_TO**  
-O `wacli-inbound` só escuta mensagens do número configurado em `CFO_WHATSAPP_TO`. Verifique:
+**Solução automática** (health_doctor detecta e aplica):
 ```bash
-grep CFO_WHATSAPP_TO ~/.agente-cfo/.env
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/auto_rollback.sh
+systemctl restart openclaw-gateway
+```
+
+**Manual** (se o auto-rollback falhou):
+```bash
+ls -lt ~/.openclaw/openclaw.json.bak*
+# Pega o mais recente que for válido:
+OPENCLAW_CONFIG_PATH=~/.openclaw/openclaw.json.bak openclaw config validate
+# Se OK:
+cp ~/.openclaw/openclaw.json.bak ~/.openclaw/openclaw.json
+systemctl restart openclaw-gateway
 ```
 
 ---
 
-## 7. Eventos não chegam ao painel
-
-### Sintoma
-O painel não exibe alertas ou o status fica estático. O agente funciona mas não aparece no dashboard.
-
-### Diagnóstico
+## Checklist de saúde rápida
 
 ```bash
-# Ver logs de envio para o painel
-grep "panel" ~/.agente-cfo/logs/proactive.log | tail -20
+# 1. Gateway up?
+openclaw health
 
-# Testar conexão com o painel manualmente
-source ~/.agente-cfo/.env
-curl -s -X POST "${PANEL_BASE_URL}/event" \
-  -H "Content-Type: application/json" \
-  -H "X-Panel-Token: ${PANEL_TOKEN}" \
-  -d '{"instance_id":"test","type":"ping","severity":"info","payload":{}}'
+# 2. Todos os daemons OK?
+for svc in openclaw-gateway cloudflared-cfo cfo-automation-engine cfo-credentials-sync \
+           cfo-evolution-sync cfo-telegram-sync cfo-mcp-warmer cfo-metrics-publisher \
+           cfo-alerts-checker cfo-health-doctor; do
+    status=$(systemctl is-active $svc 2>/dev/null || echo unknown)
+    echo "$svc: $status"
+done
+
+# 3. MCPs respondem?
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/integration_status.sh
+
+# 4. Logs de erro recentes?
+journalctl -p err --since "1 hour ago" --no-pager | grep cfo | tail -20
+
+# 5. Custo do dia?
+python3 ~/.openclaw/workspace/skills/agente-cfo/scripts/cost_estimator.py
 ```
-
-### Causas comuns
-
-**PANEL_TOKEN diferente entre VPS e Supabase**  
-O token gerado pelo setup precisa ser o mesmo configurado em **Supabase → Edge Functions → Secrets → PANEL_TOKEN**. Se regenerou o token no setup mas não atualizou no Supabase, tudo falha silenciosamente.
-
-**PANEL_BASE_URL desatualizada**  
-Se mudou o projeto Supabase, atualize:
-```bash
-grep PANEL_BASE_URL ~/.agente-cfo/.env
-# Se errado:
-sed -i "s|PANEL_BASE_URL=.*|PANEL_BASE_URL=https://novo-ref.supabase.co/functions/v1|" ~/.agente-cfo/.env
-openclaw gateway restart
-```
-
-**Edge Functions não deployadas**  
-Se as migrations foram aplicadas mas as edge functions não foram deployadas, o painel responde 404.
-```bash
-cd painel/
-supabase functions deploy --project-ref <ref>
-```
-
-**ingress_url do tunnel offline**  
-O painel envia comandos de volta para a VPS via `ingress_url`. Se o tunnel caiu, os comandos falham mas os eventos ainda chegam (sentido VPS→Supabase). Verifique o tunnel (seção 4).
-
----
-
-## 8. Cron jobs não disparam
-
-### Sintoma
-As mensagens de 07:00 e 18:00 não chegam no WhatsApp.
-
-### Diagnóstico
-
-```bash
-# Listar cron jobs registrados
-openclaw cron list
-
-# Ver runs do último cron de alerta
-openclaw cron runs <job-id>
-
-# Verificar horário do servidor (precisa bater com America/Sao_Paulo)
-date
-timedatectl
-```
-
-### Causas comuns
-
-**Timezone errada na VPS**  
-Os crons são definidos com timezone `America/Sao_Paulo`. Se a VPS está em UTC e o cron não especifica timezone, dispara no horário errado.
-```bash
-timedatectl set-timezone America/Sao_Paulo
-```
-
-**Cron jobs não foram registrados**  
-Se o setup abortou antes do PASSO 12, os crons podem não ter sido criados. Reexecute o setup ou registre manualmente:
-```bash
-# Ver se os jobs existem
-openclaw cron list
-# Se vazio, reexecute o setup (é idempotente)
-bash <(curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/setup.sh)
-```
-
-**Gateway offline no horário do disparo**  
-O cron dispara mas o gateway não está rodando para processar. Garanta que o gateway sobe automaticamente:
-```bash
-systemctl enable openclaw-gateway
-```
-
----
-
-## 9. Como ler o output do doctor.sh
-
-O `doctor.sh` verifica todos os componentes. Legenda:
-
-| Símbolo | Significado |
-|---|---|
-| `✅` | Componente ok |
-| `❌` | Componente com falha — ação necessária |
-| `⚠️` | Aviso — funciona mas atenção recomendada |
-
-**Output esperado numa instalação saudável:**
-
-```
-=== doctor.sh [agente-cfo] ===
-✅ OpenClaw: gateway rodando
-✅ wacli: pareado (+55119XXXXXXXX)
-✅ ERP (omie): API acessível
-✅ CRM: não configurado (ok)
-✅ Cron jobs: alerta_manha + alerta_tarde registrados
-✅ Tunnel: https://xxx.trycloudflare.com
-✅ Painel: registrado (instance_id: abc123)
-✅ wacli-inbound: rodando
-✅ cfo-proactive: rodando
-```
-
-**Rodando doctor de uma skill específica:**
-```bash
-# ERP
-bash ~/.openclaw/workspace/skills/omie/scripts/doctor.sh
-
-# CRM
-bash ~/.openclaw/workspace/skills/hubspot/scripts/doctor.sh
-```
-
----
-
-## 10. Logs úteis
-
-| Log | Caminho |
-|---|---|
-| Watcher proativo | `~/.agente-cfo/logs/proactive.log` |
-| Gateway OpenClaw | `journalctl -u openclaw-gateway -n 100` |
-| wacli-inbound | `journalctl -u wacli-inbound -n 100` |
-| cfo-proactive | `journalctl -u cfo-proactive -n 100` |
-| Alertas enviados | `~/.agente-cfo/state/proactive_alerts.json` |
-
----
-
-Não encontrou seu problema aqui? Abra uma issue no [repositório](https://github.com/MindOpsTeam/agente-cfo/issues) com o output do `doctor.sh`.
