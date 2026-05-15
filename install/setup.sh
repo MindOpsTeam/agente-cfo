@@ -783,7 +783,47 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer, cfo-metrics-publisher, cfo-alerts-checker."
+# Unit cfo-health-doctor — Auto-recovery (Sprint 44)
+_HEALTH_DOCTOR_SCRIPT="${SKILL_DEST}/scripts/health_doctor.py"
+cat > /etc/systemd/system/cfo-health-doctor.service << EOF
+[Unit]
+Description=Agente CFO - Health Doctor (auto-recovery sistêmico)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+# Limites conservadores: health-doctor raramente deve reiniciar
+StartLimitIntervalSec=600
+StartLimitBurst=3
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_HEALTH_DOCTOR_SCRIPT}
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Atualiza units CFO para StartLimitBurst inteligente (Sprint 44)
+# Daemons de baixo risco: máx 5 restarts em 10min antes de parar o restart storm
+for _unit in cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync \
+             cfo-evolution-sync cfo-telegram-sync cfo-mcp-warmer cfo-metrics-publisher \
+             cfo-alerts-checker; do
+    _unit_file="/etc/systemd/system/${_unit}.service"
+    if [[ -f "$_unit_file" ]]; then
+        # Adiciona StartLimitBurst se não existir
+        if ! grep -q "StartLimitBurst" "$_unit_file"; then
+            sed -i '/\[Service\]/a StartLimitIntervalSec=3600\nStartLimitBurst=5' "$_unit_file"
+        fi
+    fi
+done
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer, cfo-metrics-publisher, cfo-alerts-checker, cfo-health-doctor."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -1001,6 +1041,11 @@ ok "cfo-metrics-publisher.service iniciado (publica métricas a cada ${METRICS_P
 # Iniciar alerts checker (Sprint 42 — alertas configuráveis)
 systemctl enable --now cfo-alerts-checker 2>/dev/null || warn "systemctl enable cfo-alerts-checker falhou."
 ok "cfo-alerts-checker.service iniciado (verifica alertas a cada ${ALERTS_CHECKER_INTERVAL_S:-60}s)."
+
+# Iniciar health doctor (Sprint 44 — auto-recovery)
+chmod +x "${SKILL_DEST}/scripts/auto_rollback.sh" 2>/dev/null || true
+systemctl enable --now cfo-health-doctor 2>/dev/null || warn "systemctl enable cfo-health-doctor falhou."
+ok "cfo-health-doctor.service iniciado (saúde sistêmica a cada ${HEALTH_DOCTOR_INTERVAL_S:-60}s)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
