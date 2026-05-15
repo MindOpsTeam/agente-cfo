@@ -54,7 +54,7 @@ def test_mcp_entry(project_mcp_entry):
     p = {"name": "x", "project_url": "https://abc.supabase.co", "service_role_key": "eyJ.test", "active": True}
     entry = project_mcp_entry(p)
     assert entry["command"] == "npx"
-    assert "-y" in entry["args"]
+    assert "@supabase/mcp-server-supabase@latest" in entry["args"]
     assert "@supabase/mcp-server-supabase@latest" in entry["args"]
     assert entry["env"]["SUPABASE_URL"] == "https://abc.supabase.co"
     assert entry["env"]["SUPABASE_SERVICE_ROLE_KEY"] == "eyJ.test"

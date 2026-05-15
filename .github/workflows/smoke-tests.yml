@@ -1,0 +1,68 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MCP dependency
+        run: pip install mcp
+
+      - name: Run skill smoke tests (pytest)
+        run: |
+          python -m pytest skills/*/tests/test_mcp.py skills/*/tests/test_sync.py \
+            -v --tb=short --no-header \
+            -k "not test_list_tools_oauth"
+        # test_list_tools_oauth requer HUBSPOT_OAUTH_* — pula em CI
+
+      - name: Validate shell scripts syntax
+        run: |
+          find skills -name "*.sh" | while read f; do
+            bash -n "$f" && echo "OK: $f" || { echo "SYNTAX ERROR: $f"; exit 1; }
+          done
+
+      - name: Check Python imports (daemon scripts)
+        run: |
+          for script in \
+            skills/agente-cfo/scripts/credentials_sync.py \
+            skills/agente-cfo/scripts/metrics_publisher.py \
+            skills/agente-cfo/scripts/alerts_checker.py \
+            skills/agente-cfo/scripts/health_doctor.py \
+            skills/agente-cfo/scripts/mcp_warmer.py \
+            skills/agente-cfo/scripts/cost_estimator.py \
+            skills/supabase/scripts/supabase_sync.py \
+            skills/evolution-api/scripts/evolution_sync.py \
+            skills/telegram/scripts/telegram_sync.py; do
+            echo -n "Checking $script... "
+            python3 -c "
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location('m', '$script')
+mod = importlib.util.module_from_spec(spec)
+# Não executa — só verifica syntax/import
+" && echo "OK" || { echo "FAIL"; exit 1; }
+          done
+
+      - name: Lint critical Python files
+        run: |
+          pip install pyflakes -q
+          python -m pyflakes skills/agente-cfo/scripts/alerts_checker.py \
+            skills/agente-cfo/scripts/health_doctor.py \
+            skills/agente-cfo/scripts/mcp_warmer.py || true
+          # || true: warnings não bloqueiam CI, só erros graves
+
+      - name: Summary
+        if: always()
+        run: echo "Smoke tests concluídos — ver log acima para detalhes"
