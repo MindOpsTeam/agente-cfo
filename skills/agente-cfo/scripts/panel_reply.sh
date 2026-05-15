@@ -47,3 +47,24 @@ curl -s -X POST "${PANEL_BASE_URL%/}/chat-marcos-reply" \
   -H "X-Panel-Token: ${PANEL_TOKEN}" \
   -d "$PAYLOAD"
 echo
+
+# Sprint 54 — Dispara marcos_learn.sh em background (fire-and-forget)
+# Só aprendemos quando o run foi bem-sucedido (status=sent)
+if [[ "${STATUS:-sent}" == "sent" && "${MARCOS_LEARN_DISABLED:-0}" != "1" ]]; then
+    LEARN_SCRIPT="${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/marcos_learn.sh"
+    if [[ -f "$LEARN_SCRIPT" ]]; then
+        _LEARN_PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+    'thread_id': sys.argv[1],
+    'user_message': '',
+    'marcos_response': sys.argv[2],
+    'tools_used': [],
+    'channel': 'panel',
+}))
+" "$THREAD_ID" "${CONTENT:0:800}" 2>/dev/null || echo "")
+        if [[ -n "$_LEARN_PAYLOAD" ]]; then
+            echo "$_LEARN_PAYLOAD" | bash "$LEARN_SCRIPT" >> ~/.agente-cfo/logs/marcos-learn.log 2>&1 &
+        fi
+    fi
+fi

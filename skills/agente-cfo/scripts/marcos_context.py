@@ -42,7 +42,7 @@ def _read_file(path: Path, fallback: str = "") -> str:
 
 
 def _get_recent_memories(n: int = 3) -> str:
-    """Lê os N diários de memória mais recentes."""
+    """Lê os N diários de memória mais recentes (formato markdown)."""
     if not MEM_DIR.exists():
         return ""
     diaries = sorted(MEM_DIR.glob("*.md"), reverse=True)[:n]
@@ -55,6 +55,47 @@ def _get_recent_memories(n: int = 3) -> str:
             date = d.stem  # ex: "2026-05-15"
             parts.append(f"### Memória — {date}\n{content[:800]}")
     return "\n\n".join(parts) if parts else ""
+
+
+def _get_learned_memories(n: int = 10) -> str:
+    """
+    Lê até N memórias aprendidas via marcos_learn.sh (índice FIFO).
+    Retorna markdown formatado para injeção no system prompt.
+    """
+    learned_dir = Path.home() / ".openclaw" / "memory" / "learned"
+    index_file = learned_dir / "_index.json"
+    if not index_file.exists():
+        return ""
+    try:
+        index = json.loads(index_file.read_text())
+    except Exception:
+        return ""
+
+    entries: list[dict] = []
+    for entry_id in index.get("entries", [])[:n]:
+        entry_file = learned_dir / f"{entry_id}.json"
+        if entry_file.exists():
+            try:
+                entry = json.loads(entry_file.read_text())
+                entries.append(entry)
+            except Exception:
+                pass
+
+    if not entries:
+        return ""
+
+    tag_icons = {
+        "preferência": "❤️", "terminologia": "💬",
+        "workflow": "⚙️", "fato": "📌"
+    }
+    lines = ["## Aprendizados sobre o dono (memória acumulada)\n"]
+    for e in entries:
+        tag = e.get("tag", "fato")
+        icon = tag_icons.get(tag, "•")
+        content = e.get("content", "")
+        if content:
+            lines.append(f"- {icon} [{tag}] {content}")
+    return "\n".join(lines) if len(lines) > 1 else ""
 
 
 def _get_capabilities(regenerate: bool = False) -> str:
@@ -154,12 +195,17 @@ def get_system_prompt(
     if capabilities:
         parts.append(capabilities)
 
-    # 5. Memórias recentes
-    memories = _get_recent_memories(n=3)
-    if memories:
-        parts.append(f"## Memórias recentes\n\n{memories}")
+    # 5. Memórias aprendidas (feedback loop) — mais relevantes
+    learned = _get_learned_memories(n=10)
+    if learned:
+        parts.append(learned)
 
-    # 6. Contexto de runtime
+    # 6. Diários de memória recentes (contexto histórico)
+    memories = _get_recent_memories(n=2)
+    if memories:
+        parts.append(f"## Diários recentes\n\n{memories}")
+
+    # 7. Contexto de runtime
     runtime_ctx = f"""## Contexto de runtime
 
 - **Agora**: {now_br}
