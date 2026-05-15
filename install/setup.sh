@@ -760,7 +760,30 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer, cfo-metrics-publisher."
+# Unit cfo-alerts-checker — Alertas configuráveis (Sprint 42)
+_ALERTS_CHECKER_SCRIPT="${SKILL_DEST}/scripts/alerts_checker.py"
+cat > /etc/systemd/system/cfo-alerts-checker.service << EOF
+[Unit]
+Description=Agente CFO - Alerts Checker (alertas configuráveis)
+After=network.target openclaw-gateway.service cfo-metrics-publisher.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_ALERTS_CHECKER_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer, cfo-metrics-publisher, cfo-alerts-checker."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -974,6 +997,10 @@ ok "cfo-mcp-warmer.service iniciado (pre-warm MCPs a cada ${MCP_WARMER_INTERVAL_
 chmod +x "${SKILL_DEST}/scripts/metric_emit.sh" 2>/dev/null || true
 systemctl enable --now cfo-metrics-publisher 2>/dev/null || warn "systemctl enable cfo-metrics-publisher falhou."
 ok "cfo-metrics-publisher.service iniciado (publica métricas a cada ${METRICS_PUBLISHER_INTERVAL_S:-60}s)."
+
+# Iniciar alerts checker (Sprint 42 — alertas configuráveis)
+systemctl enable --now cfo-alerts-checker 2>/dev/null || warn "systemctl enable cfo-alerts-checker falhou."
+ok "cfo-alerts-checker.service iniciado (verifica alertas a cada ${ALERTS_CHECKER_INTERVAL_S:-60}s)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
