@@ -737,7 +737,30 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer."
+# Unit cfo-metrics-publisher — Observability (Sprint 40)
+_METRICS_PUBLISHER_SCRIPT="${SKILL_DEST}/scripts/metrics_publisher.py"
+cat > /etc/systemd/system/cfo-metrics-publisher.service << EOF
+[Unit]
+Description=Agente CFO - Metrics Publisher (observability)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_METRICS_PUBLISHER_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer, cfo-metrics-publisher."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -946,6 +969,11 @@ ok "cfo-telegram-sync.service iniciado (sync Telegram bots a cada ${TELEGRAM_SYN
 # Iniciar MCP warmer (Sprint 36 — redução de cold-start)
 systemctl enable --now cfo-mcp-warmer 2>/dev/null || warn "systemctl enable cfo-mcp-warmer falhou."
 ok "cfo-mcp-warmer.service iniciado (pre-warm MCPs a cada ${MCP_WARMER_INTERVAL_MIN:-10} min)."
+
+# Iniciar metrics publisher (Sprint 40 — Observability)
+chmod +x "${SKILL_DEST}/scripts/metric_emit.sh" 2>/dev/null || true
+systemctl enable --now cfo-metrics-publisher 2>/dev/null || warn "systemctl enable cfo-metrics-publisher falhou."
+ok "cfo-metrics-publisher.service iniciado (publica métricas a cada ${METRICS_PUBLISHER_INTERVAL_S:-60}s)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
