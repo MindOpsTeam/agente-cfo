@@ -195,6 +195,12 @@ fi
 npm install -g openclaw@latest 2>&1 | tail -3 || fail "Falha ao instalar OpenClaw."
 ok "OpenClaw: $(openclaw --version 2>/dev/null | head -1)"
 
+# Sprint 36 — Pre-instala pacotes npm dos MCP servers populares (evita cold-start por download)
+step "2b/13 — Pre-instalando npm packages de MCP servers"
+npm install -g --prefer-offline @supabase/mcp-server-supabase@latest 2>&1 | tail -3 \
+    || warn "@supabase/mcp-server-supabase: falha na instalação (warmer tentará depois)"
+ok "MCP npm packages pré-instalados (cold-start reduzido)"
+
 # Otimizações para VPS
 if ! grep -q 'NODE_COMPILE_CACHE' "${HOME}/.bashrc" 2>/dev/null; then
     cat >> "${HOME}/.bashrc" <<'EOF'
@@ -707,7 +713,31 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync."
+# Unit cfo-mcp-warmer — MCP Server Pre-warm (Sprint 36)
+_MCP_WARMER_SCRIPT="${SKILL_DEST}/scripts/mcp_warmer.py"
+cat > /etc/systemd/system/cfo-mcp-warmer.service << EOF
+[Unit]
+Description=Agente CFO - MCP Server Pre-warm (cold-start reduction)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+Environment=MCP_WARMER_INTERVAL_MIN=10
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_MCP_WARMER_SCRIPT}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -912,6 +942,10 @@ chmod +x "${HOME}/.openclaw/workspace/skills/telegram/connect.sh" 2>/dev/null ||
 chmod +x "${HOME}/.openclaw/workspace/skills/telegram/doctor.sh" 2>/dev/null || true
 systemctl enable --now cfo-telegram-sync 2>/dev/null || warn "systemctl enable cfo-telegram-sync falhou."
 ok "cfo-telegram-sync.service iniciado (sync Telegram bots a cada ${TELEGRAM_SYNC_INTERVAL_S:-30}s)."
+
+# Iniciar MCP warmer (Sprint 36 — redução de cold-start)
+systemctl enable --now cfo-mcp-warmer 2>/dev/null || warn "systemctl enable cfo-mcp-warmer falhou."
+ok "cfo-mcp-warmer.service iniciado (pre-warm MCPs a cada ${MCP_WARMER_INTERVAL_MIN:-10} min)."
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 12: Registrar instância no painel
