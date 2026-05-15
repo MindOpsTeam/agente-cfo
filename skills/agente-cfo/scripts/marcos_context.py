@@ -98,6 +98,68 @@ def _get_learned_memories(n: int = 10) -> str:
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
+def _get_routing_block() -> str:
+    """
+    Gera bloco de roteamento ativo: tabela de categorias → skill ativa.
+    Lê secrets dir + openclaw.json para determinar o que está ativo.
+    """
+    import subprocess
+
+    secrets_dir = Path.home() / ".openclaw" / "secrets"
+    active_skills: set = set()
+    if secrets_dir.exists():
+        active_skills = {f.stem for f in secrets_dir.glob("*.env")
+                         if f.stem not in ("wacli",)}
+
+    config_file = Path.home() / ".openclaw" / "openclaw.json"
+    supabase_mcps: list[str] = []
+    if config_file.exists():
+        try:
+            data = json.loads(config_file.read_text())
+            servers = data.get("mcp", {}).get("servers", {})
+            supabase_mcps = [k for k in servers if k.startswith("supabase_")]
+            active_skills.update(servers.keys())
+        except Exception:
+            pass
+
+    CATEGORIES = {
+        "ERP (saldo/caixa/contas)": ["omie", "bling", "tiny", "granatum", "vhsys", "nibo", "contaazul"],
+        "CRM (deals/pipeline)":     ["hubspot", "rd-station", "piperun", "pipedrive", "kommo"],
+        "Cobrança (boleto/PIX)":    ["asaas", "iugu"],
+        "E-commerce (pedidos)":     ["mercado-livre", "nuvemshop"],
+    }
+
+    rows = []
+    for cat, skills in CATEGORIES.items():
+        active = [s for s in skills if s in active_skills]
+        if active:
+            rows.append(f"| {cat} | **{', '.join(active)}** | ✓ ativo |")
+        else:
+            rows.append(f"| {cat} | nenhum | ⚠ avise o dono e sugira configurar |")
+
+    for slug in supabase_mcps:
+        rows.append(f"| Database Supabase | **{slug}** | ✓ ativo |")
+
+    if not supabase_mcps:
+        rows.append("| Database Supabase | nenhum | ⚠ avise o dono |")
+
+    table = "\n".join([
+        "## Roteamento ativo HOJE",
+        "",
+        "| Categoria | Skill ativa | Status |",
+        "|-----------|-------------|--------|",
+    ] + rows)
+
+    rule = (
+        "\n**Regra**: se user perguntar sobre categoria sem skill ativa (⚠), responda:\n"
+        "> \"Você ainda não conectou [tipo]. Configure em /integrations pelo painel.\"\n"
+        "Nunca tente usar skill sem credencial configurada.\n"
+        "Use `bash marcos_route.sh \"<pergunta>\"` para confirmar qual skill usar antes de chamar tools."
+    )
+
+    return table + rule
+
+
 def _get_capabilities(regenerate: bool = False) -> str:
     """Retorna capabilities markdown, regenerando se necessário."""
     capabilities_path = IDENTITY_DIR / "marcos_capabilities.md"
@@ -190,7 +252,17 @@ def get_system_prompt(
     if persona:
         parts.append(persona)
 
-    # 4. Capabilities (dinâmico)
+    # 4. Routing doc (estático — tabela mestra)
+    routing_doc = _read_file(IDENTITY_DIR / "marcos_routing.md")
+    if routing_doc:
+        parts.append(routing_doc)
+
+    # 4b. Routing ativo HOJE (dinâmico — quais skills têm credencial)
+    routing_block = _get_routing_block()
+    if routing_block:
+        parts.append(routing_block)
+
+    # 4c. Capabilities (dinâmico)
     capabilities = _get_capabilities(regenerate_capabilities)
     if capabilities:
         parts.append(capabilities)
