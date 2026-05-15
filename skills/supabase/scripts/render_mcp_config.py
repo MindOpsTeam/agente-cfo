@@ -29,10 +29,21 @@ def project_mcp_name(project: dict) -> str:
 
 
 def project_mcp_entry(project: dict) -> dict:
-    """Retorna o objeto de entrada MCP (sem a key name)."""
+    """
+    Retorna o objeto de entrada MCP (sem a key name).
+
+    Sprint 36: usa --prefer-offline --no-install pra evitar download a cada invocação.
+    Requer que @supabase/mcp-server-supabase esteja instalado globalmente
+    (feito pelo mcp_warmer.py e pelo setup.sh na primeira execução).
+    Fallback automático do npx: se não achar offline, baixa normalmente.
+    """
     return {
         "command": "npx",
-        "args": ["-y", "@supabase/mcp-server-supabase@latest"],
+        "args": [
+            "--prefer-offline",
+            "--no-install",
+            "@supabase/mcp-server-supabase@latest",
+        ],
         "env": {
             "SUPABASE_URL": project["project_url"],
             "SUPABASE_SERVICE_ROLE_KEY": project["service_role_key"],
