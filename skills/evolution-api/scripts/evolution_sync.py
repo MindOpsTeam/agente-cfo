@@ -154,7 +154,10 @@ def parse_evo_state(state: str) -> str:
 # ── Webhook URL pra cada instância ────────────────────────────────────────────
 
 def instance_webhook_url(panel_base: str) -> str:
-    """URL que a Evolution chama ao receber mensagens."""
+    """
+    URL que a Evolution chama ao receber mensagens.
+    Sprint 35: aponta para whatsapp-incoming-webhook (thin wrapper → incoming-message).
+    """
     return f"{panel_base}/whatsapp-incoming-webhook"
 
 

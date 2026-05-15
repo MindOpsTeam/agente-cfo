@@ -133,7 +133,8 @@ def fetch_bots() -> list:
 def bot_webhook_url(panel_base: str, webhook_secret: str) -> str:
     """
     URL que o Telegram chama ao receber atualizações.
-    secret é passado como query param para validação no webhook handler.
+    Sprint 35: aponta para telegram-incoming-webhook (thin wrapper → incoming-message).
+    secret no query param pois Telegram não permite headers customizados em webhooks.
     """
     import urllib.parse
     secret_encoded = urllib.parse.quote(webhook_secret, safe="")
