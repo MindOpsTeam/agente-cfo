@@ -380,6 +380,34 @@ except:
         OUT=$(openclaw message send --to "$CHAT_ID" --text "$TEXT" 2>&1) && _ok "$OUT" || _err "$OUT"
         ;;
 
+    # ── Marcos Context (Sprint 53) ────────────────────────────────────────────
+    marcos_context_get)
+        CHANNEL="$(_get channel)"
+        USER_NAME="$(_get user)"
+        REGEN="$(_get regenerate)"
+        SCRIPT="${WORKSPACE}/marcos_context.py"
+        if [[ ! -f "$SCRIPT" ]]; then
+            _err "marcos_context.py não encontrado"
+            exit 0
+        fi
+        REGEN_FLAG=""
+        [[ "$REGEN" == "true" ]] && REGEN_FLAG="--regen"
+        OUT=$(python3 "$SCRIPT" \
+            --channel "${CHANNEL:-panel}" \
+            --user "${USER_NAME:-}" \
+            --json \
+            ${REGEN_FLAG} 2>/dev/null) && _ok "$OUT" || _err "Falha ao gerar context"
+        ;;
+
+    marcos_capabilities_update)
+        SCRIPT="${WORKSPACE}/update_capabilities.py"
+        if [[ ! -f "$SCRIPT" ]]; then
+            _err "update_capabilities.py não encontrado"
+            exit 0
+        fi
+        OUT=$(python3 "$SCRIPT" 2>&1 | tail -5) && _ok "$OUT" || _err "$OUT"
+        ;;
+
     # ── Ação desconhecida ──────────────────────────────────────────────────────
     *)
         VALID_ACTIONS=(
@@ -392,6 +420,7 @@ except:
             "service_logs" "mcp_sync_now" "self_update"
             "whatsapp_pair_start" "whatsapp_pair_status" "whatsapp_pair_qr"
             "whatsapp_pair_cancel" "whatsapp_status" "whatsapp_send"
+            "marcos_context_get" "marcos_capabilities_update"
         )
         VALID_STR=$(printf '"%s" ' "${VALID_ACTIONS[@]}")
         _err "ação '$ACTION' desconhecida. Actions válidas: ${VALID_STR}"
