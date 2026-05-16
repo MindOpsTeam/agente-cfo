@@ -12,6 +12,46 @@ source "$SCRIPT_DIR/_shared.sh"
 LOG_FILE="$LOG_DIR/heartbeat.log"
 _ENV_FILE="${CFO_ENV_FILE:-$HOME/.agente-cfo/.env}"
 
+# ── Ler arquivos de identidade do skill ───────────────────────────────────────
+_IDENTITY_DIR="$HOME/.openclaw/workspace/skills/agente-cfo/identity"
+_IDENTITY_CONTENT=""
+_SOUL_CONTENT=""
+[[ -f "${_IDENTITY_DIR}/identity.md" ]] && _IDENTITY_CONTENT=$(< "${_IDENTITY_DIR}/identity.md")
+[[ -f "${_IDENTITY_DIR}/soul.md" ]]     && _SOUL_CONTENT=$(< "${_IDENTITY_DIR}/soul.md")
+SYSTEM_PROMPT="${_IDENTITY_CONTENT}${_SOUL_CONTENT:+$'\n\n'${_SOUL_CONTENT}}"
+export SYSTEM_PROMPT
+
+# ── Override de _panel_heartbeat para incluir system_prompt ───────────────────
+_panel_heartbeat() {
+    [[ -z "${PANEL_BASE_URL:-}" ]] && return 0
+    [[ -z "${PANEL_TOKEN:-}" ]]    && return 0
+    [[ -z "${INSTANCE_ID:-}" ]]    && return 0
+
+    local sp_json
+    sp_json=$(printf '%s' "${SYSTEM_PROMPT:-}" \
+        | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))" 2>/dev/null \
+        || echo '""')
+
+    local body="{\"instance_id\":\"${INSTANCE_ID}\""
+    if [[ -n "${INGRESS_URL:-}" ]]; then
+        body="${body},\"ingress_url\":\"${INGRESS_URL}\""
+    fi
+    body="${body},\"system_prompt\":${sp_json}}"
+
+    local resp http_code
+    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -X POST "${PANEL_BASE_URL}/heartbeat" \
+        -H "Content-Type: application/json" \
+        -H "X-Panel-Token: ${PANEL_TOKEN}" \
+        -d "$body" 2>>"$LOG_DIR/panel.log" || echo -e "\n000")
+    http_code=$(printf '%s' "$resp" | tail -n1)
+    if [[ "$http_code" != "201" && "$http_code" != "200" ]]; then
+        printf '[%s] _panel_heartbeat -> HTTP %s\n' \
+            "$(date +%FT%T)" "$http_code" \
+            >> "$LOG_DIR/panel.log"
+    fi
+    return 0
+}
+
 # ── Re-detectar URL do Cloudflare Tunnel ──────────────────────────────────────
 # Tenta detectar a URL atual do tunnel. Se encontrar e for diferente da
 # INGRESS_URL no .env, atualiza o .env e exporta a nova valor.
