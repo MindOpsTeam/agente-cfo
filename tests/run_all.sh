@@ -156,8 +156,6 @@ SHELL_SCRIPTS=(
     "agente-cfo/scripts/memory_stats.sh"
     "agente-cfo/scripts/panel_post_reply.sh"
     "agente-cfo/scripts/self_update.sh"
-    "evolution-api/scripts/send_evolution.sh"
-    "telegram/scripts/send_telegram.sh"
 )
 
 for script in "${SHELL_SCRIPTS[@]}"; do
@@ -193,7 +191,7 @@ _section "Daemons systemd"
 
 DAEMONS=(
     openclaw-gateway cloudflared-cfo
-    cfo-credentials-sync cfo-supabase-sync cfo-evolution-sync cfo-telegram-sync
+    cfo-credentials-sync cfo-supabase-sync
     cfo-automation-engine cfo-mcp-warmer
     cfo-metrics-publisher cfo-alerts-checker cfo-health-doctor
 )

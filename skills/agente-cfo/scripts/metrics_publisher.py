@@ -42,8 +42,6 @@ DAEMONS = [
     "cfo-automation-engine",
     "cfo-credentials-sync",
     "cfo-supabase-sync",
-    "cfo-evolution-sync",
-    "cfo-telegram-sync",
     "cfo-mcp-warmer",
     "cfo-metrics-publisher",
 ]

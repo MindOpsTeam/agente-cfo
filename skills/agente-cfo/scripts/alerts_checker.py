@@ -382,7 +382,6 @@ def send_notification(alert: dict, message: str) -> None:
         try:
             if channel_type == "whatsapp" and len(parts) >= 3:
                 instance, phone = parts[1], parts[2]
-                send_script = WORKSPACE.parent.parent / "evolution-api" / "scripts" / "send_evolution.sh"
                 if send_script.exists():
                     subprocess.run(
                         ["bash", str(send_script), instance, phone, message],
@@ -390,16 +389,7 @@ def send_notification(alert: dict, message: str) -> None:
                     )
                     log(f"[notify] WA {instance}:{phone} ✓")
 
-            elif channel_type == "telegram" and len(parts) >= 3:
-                bot, chat_id = parts[1], parts[2]
-                send_script = WORKSPACE.parent.parent / "telegram" / "scripts" / "send_telegram.sh"
-                if send_script.exists():
-                    subprocess.run(
-                        ["bash", str(send_script), bot, chat_id, message],
-                        capture_output=True, timeout=30,
-                    )
-                    log(f"[notify] TG {bot}:{chat_id} ✓")
-
+    
             elif channel_type == "panel":
                 # Emite evento no painel via edge function event
                 panel_base = _panel_base()

@@ -39,31 +39,6 @@ CHANNEL_NAME="${CHANNEL#*:}"       # "principal" | "marcoscfo_bot" | "user123"
 # ── 1. Envia pelo canal externo ───────────────────────────────────────────────
 
 case "$CHANNEL_TYPE" in
-    whatsapp)
-        if [[ -z "$EXTERNAL_ID" ]]; then
-            echo "ERRO: external_id (phone) obrigatório para WhatsApp" >&2
-            exit 1
-        fi
-        SEND_SCRIPT="${WORKSPACE}/evolution-api/scripts/send_evolution.sh"
-        if [[ ! -f "$SEND_SCRIPT" ]]; then
-            echo "ERRO: send_evolution.sh não encontrado em $SEND_SCRIPT" >&2
-            exit 1
-        fi
-        bash "$SEND_SCRIPT" "$CHANNEL_NAME" "$EXTERNAL_ID" "$REPLY"
-        ;;
-
-    telegram)
-        if [[ -z "$EXTERNAL_ID" ]]; then
-            echo "ERRO: external_id (chat_id) obrigatório para Telegram" >&2
-            exit 1
-        fi
-        SEND_SCRIPT="${WORKSPACE}/telegram/scripts/send_telegram.sh"
-        if [[ ! -f "$SEND_SCRIPT" ]]; then
-            echo "ERRO: send_telegram.sh não encontrado em $SEND_SCRIPT" >&2
-            exit 1
-        fi
-        bash "$SEND_SCRIPT" "$CHANNEL_NAME" "$EXTERNAL_ID" "$REPLY"
-        ;;
 
     panel)
         # Canal painel — só grava no histórico (resposta já aparece via Supabase realtime)
