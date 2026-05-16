@@ -62,8 +62,6 @@ log "Verificando systemd units..."
 declare -A UNIT_SCRIPTS=(
     ["cfo-supabase-sync"]="${WORKSPACE_SKILLS}/supabase/scripts/supabase_sync.py"
     ["cfo-credentials-sync"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/credentials_sync.py"
-    ["cfo-evolution-sync"]="${WORKSPACE_SKILLS}/evolution-api/scripts/evolution_sync.py"
-    ["cfo-telegram-sync"]="${WORKSPACE_SKILLS}/telegram/scripts/telegram_sync.py"
     ["cfo-mcp-warmer"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/mcp_warmer.py"
     ["cfo-metrics-publisher"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/metrics_publisher.py"
     ["cfo-alerts-checker"]="${WORKSPACE_SKILLS}/agente-cfo/scripts/alerts_checker.py"
@@ -108,7 +106,7 @@ done
 
 # ── 5. Restart daemons ────────────────────────────────────────────────────────
 log "Reiniciando daemons..."
-DAEMONS=(cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync cfo-evolution-sync cfo-telegram-sync cfo-mcp-warmer cfo-metrics-publisher cfo-alerts-checker cfo-health-doctor)
+DAEMONS=(cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync cfo-mcp-warmer cfo-metrics-publisher cfo-alerts-checker cfo-health-doctor)
 for daemon in "${DAEMONS[@]}"; do
     systemctl restart "${daemon}" 2>/dev/null && log "  restart ${daemon}" || warn "  ${daemon} não pôde ser reiniciado"
 done

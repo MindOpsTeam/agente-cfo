@@ -195,15 +195,6 @@ fi
 npm install -g openclaw@latest 2>&1 | tail -3 || fail "Falha ao instalar OpenClaw."
 ok "OpenClaw: $(openclaw --version 2>/dev/null | head -1)"
 
-# Sprint 51 — Instala plugin WhatsApp nativo (Baileys via @openclaw/whatsapp)
-step "2a/13 — Plugin WhatsApp nativo (@openclaw/whatsapp)"
-if ! openclaw plugins list 2>/dev/null | grep -q "whatsapp"; then
-    openclaw plugins install @openclaw/whatsapp 2>&1 | tail -3 || \
-        warn "Falha ao instalar @openclaw/whatsapp — WhatsApp Baileys pode não funcionar"
-    ok "Plugin @openclaw/whatsapp instalado"
-else
-    ok "Plugin @openclaw/whatsapp já instalado"
-fi
 
 # Sprint 36 — Pre-instala pacotes npm dos MCP servers populares (evita cold-start por download)
 step "2b/13 — Pre-instalando npm packages de MCP servers"
@@ -677,52 +668,6 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-# Unit cfo-evolution-sync — Evolution API WhatsApp Sync (Sprint 27)
-_EVOLUTION_SYNC_SCRIPT="${HOME}/.openclaw/workspace/skills/evolution-api/scripts/evolution_sync.py"
-cat > /etc/systemd/system/cfo-evolution-sync.service << EOF
-[Unit]
-Description=Agente CFO - Evolution API WhatsApp Sync
-After=network.target openclaw-gateway.service
-Wants=openclaw-gateway.service
-
-[Service]
-Type=simple
-User=${_USER_NAME}
-Environment=HOME=${HOME}
-Environment=PYTHONUNBUFFERED=1
-EnvironmentFile=${ENV_FILE}
-ExecStart=/usr/bin/python3 ${_EVOLUTION_SYNC_SCRIPT}
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-# Unit cfo-telegram-sync — Telegram Bots Sync (Sprint 34)
-_TELEGRAM_SYNC_SCRIPT="${HOME}/.openclaw/workspace/skills/telegram/scripts/telegram_sync.py"
-cat > /etc/systemd/system/cfo-telegram-sync.service << EOF
-[Unit]
-Description=Agente CFO - Telegram Bots Sync
-After=network.target openclaw-gateway.service
-Wants=openclaw-gateway.service
-
-[Service]
-Type=simple
-User=${_USER_NAME}
-Environment=HOME=${HOME}
-Environment=PYTHONUNBUFFERED=1
-EnvironmentFile=${ENV_FILE}
-ExecStart=/usr/bin/python3 ${_TELEGRAM_SYNC_SCRIPT}
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
 # Unit cfo-mcp-warmer — MCP Server Pre-warm (Sprint 36)
 _MCP_WARMER_SCRIPT="${SKILL_DEST}/scripts/mcp_warmer.py"
 cat > /etc/systemd/system/cfo-mcp-warmer.service << EOF
@@ -821,7 +766,6 @@ EOF
 # Atualiza units CFO para StartLimitBurst inteligente (Sprint 44)
 # Daemons de baixo risco: máx 5 restarts em 10min antes de parar o restart storm
 for _unit in cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supabase-sync \
-             cfo-evolution-sync cfo-telegram-sync cfo-mcp-warmer cfo-metrics-publisher \
              cfo-alerts-checker; do
     _unit_file="/etc/systemd/system/${_unit}.service"
     if [[ -f "$_unit_file" ]]; then
@@ -833,7 +777,6 @@ for _unit in cfo-proactive cfo-automation-engine cfo-credentials-sync cfo-supaba
 done
 
 systemctl daemon-reload
-info "Systemd units criados: openclaw-gateway, cloudflared-cfo, wacli-sync, wacli-inbound, cfo-proactive, cfo-automation-engine, cfo-supabase-sync, cfo-credentials-sync, cfo-evolution-sync, cfo-telegram-sync, cfo-mcp-warmer, cfo-metrics-publisher, cfo-alerts-checker, cfo-health-doctor."
 
 # Iniciar gateway e aguardar responder
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
@@ -1025,19 +968,9 @@ ok "cfo-credentials-sync.service iniciado (sync de credenciais a cada ${CREDENTI
 
 # Instalar skill evolution-api e iniciar daemon (Sprint 27)
 _install_skill_from_repo "evolution-api"
-chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/scripts/send_evolution.sh" 2>/dev/null || true
-chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/connect.sh" 2>/dev/null || true
-chmod +x "${HOME}/.openclaw/workspace/skills/evolution-api/doctor.sh" 2>/dev/null || true
-systemctl enable --now cfo-evolution-sync 2>/dev/null || warn "systemctl enable cfo-evolution-sync falhou."
-ok "cfo-evolution-sync.service iniciado (sync WhatsApp multi-instância a cada ${EVOLUTION_SYNC_INTERVAL_S:-30}s)."
 
 # Instalar skill telegram e iniciar daemon (Sprint 34)
 _install_skill_from_repo "telegram"
-chmod +x "${HOME}/.openclaw/workspace/skills/telegram/scripts/send_telegram.sh" 2>/dev/null || true
-chmod +x "${HOME}/.openclaw/workspace/skills/telegram/connect.sh" 2>/dev/null || true
-chmod +x "${HOME}/.openclaw/workspace/skills/telegram/doctor.sh" 2>/dev/null || true
-systemctl enable --now cfo-telegram-sync 2>/dev/null || warn "systemctl enable cfo-telegram-sync falhou."
-ok "cfo-telegram-sync.service iniciado (sync Telegram bots a cada ${TELEGRAM_SYNC_INTERVAL_S:-30}s)."
 
 # Iniciar MCP warmer (Sprint 36 — redução de cold-start)
 systemctl enable --now cfo-mcp-warmer 2>/dev/null || warn "systemctl enable cfo-mcp-warmer falhou."
