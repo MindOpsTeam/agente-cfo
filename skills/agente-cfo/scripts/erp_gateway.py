@@ -35,8 +35,11 @@ def main():
                     os.environ.setdefault(k.strip(), v.strip())
 
     erp_name = os.environ.get("CFO_ERP_NAME", "omie")
+    # Normaliza hífen → underscore para montar o path do script
+    # (ex: "mercado-livre" → "mercado_livre_client.py")
+    erp_slug = erp_name.replace("-", "_")
     skill_base = os.path.expanduser(f"~/.openclaw/workspace/skills/{erp_name}")
-    client_script = os.path.join(skill_base, "scripts", f"{erp_name}_client.py")
+    client_script = os.path.join(skill_base, "scripts", f"{erp_slug}_client.py")
 
     if not os.path.exists(client_script):
         print(json.dumps({"error": f"Skill '{erp_name}' nao encontrada em {client_script}"}))
