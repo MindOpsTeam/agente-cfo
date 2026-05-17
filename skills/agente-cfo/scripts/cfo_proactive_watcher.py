@@ -22,6 +22,7 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -141,12 +142,15 @@ def _load_client(skill_name: str, base_class_name: str) -> Any | None:
         return cls()
     except ImportError as e:
         log(f"[loader] ImportError ao carregar {module_name}: {e}")
+        log(f"[loader] Traceback:\n{traceback.format_exc()}")
         return None
     except AttributeError as e:
         log(f"[loader] {class_name} não encontrado em {module_name}: {e}")
+        log(f"[loader] Traceback:\n{traceback.format_exc()}")
         return None
     except Exception as e:
         log(f"[loader] Erro ao instanciar {class_name}: {e}")
+        log(f"[loader] Traceback completo:\n{traceback.format_exc()}")
         return None
 
 
@@ -343,6 +347,10 @@ def run() -> None:
 
         erp_client = load_erp_client()
         crm_client = load_crm_client()
+
+        if erp_client is None:
+            log("[AVISO] erp_client está None — todas as regras dependentes de ERP serão puladas neste ciclo. "
+                "Verifique CFO_ERP_NAME, credenciais e logs acima para a causa raiz.")
 
         try:
             n = run_cycle(rules, erp_client, crm_client, state)
