@@ -15,15 +15,51 @@ Thresholds configuráveis por horizonte:
   CFO_CASH_LOW_THRESHOLD_30D_BRL   — threshold para janela 30 dias
   CFO_CASH_LOW_THRESHOLD_90D_BRL   — threshold para janela 90 dias
   CFO_CASH_THRESHOLD_MULTIPLIER    — multiplicador sobre LLM_BUDGET_BRL (default: 5 / 7d)
+
+Threshold automático (7d):
+  Quando CFO_CASH_LOW_THRESHOLD_BRL não está definido, calcula automaticamente
+  15% da média mensal de saídas dos últimos 90 dias via list_payables.
+  Fallback para LLM_BUDGET_BRL × 5 se a API falhar ou dados forem insuficientes.
 """
 from __future__ import annotations
+import logging
 import os
 from datetime import date, timedelta
 from . import ProactiveRule, Alert
 
+logger = logging.getLogger(__name__)
 
-def _cash_threshold(horizon: str = "7d") -> float:
-    """Retorna threshold para o horizonte especificado (7d, 30d, 90d)."""
+
+def _auto_threshold_from_burn(erp_client) -> float | None:
+    """
+    Calcula threshold automático = 15% da média mensal de saídas dos últimos 90 dias.
+    Retorna None se não for possível calcular (API falha, dados insuficientes).
+    """
+    try:
+        today = date.today()
+        since_90d = (today - timedelta(days=90)).isoformat()
+        today_str = today.isoformat()
+        payables_resp = erp_client.list_payables(from_date=since_90d, to_date=today_str, limit=500)
+        items = payables_resp.get("items", [])
+        if not items:
+            logger.warning("rule_cash_low: list_payables retornou 0 itens para os últimos 90 dias — usando fallback de threshold")
+            return None
+        total_outgoing = sum(float(i.get("amount_brl", 0.0)) for i in items)
+        monthly_avg = total_outgoing / 3.0  # 90 dias ≈ 3 meses
+        threshold = monthly_avg * 0.15
+        logger.info(f"rule_cash_low: threshold automático calculado = R$ {threshold:,.2f} (burn médio mensal R$ {monthly_avg:,.2f})")
+        return threshold
+    except Exception as e:
+        logger.warning(f"rule_cash_low: não foi possível calcular threshold automático via burn: {e}")
+        return None
+
+
+def _cash_threshold(horizon: str = "7d", erp_client=None) -> float:
+    """Retorna threshold para o horizonte especificado (7d, 30d, 90d).
+
+    Para janela de 7 dias: se CFO_CASH_LOW_THRESHOLD_BRL não estiver setado,
+    tenta calcular automaticamente via burn histórico (últimos 90 dias).
+    """
     env_keys = {
         "7d":  ("CFO_CASH_LOW_THRESHOLD_BRL",     "CFO_CASH_THRESHOLD_MULTIPLIER",  5),
         "30d": ("CFO_CASH_LOW_THRESHOLD_30D_BRL",  "CFO_CASH_THRESHOLD_MULTIPLIER", 15),
@@ -36,6 +72,18 @@ def _cash_threshold(horizon: str = "7d") -> float:
             return float(override)
         except ValueError:
             pass
+
+    # Para horizonte 7d: tenta calcular via burn histórico
+    if horizon == "7d" and erp_client is not None:
+        auto = _auto_threshold_from_burn(erp_client)
+        if auto is not None:
+            return auto
+        logger.warning(
+            "rule_cash_low: threshold automático indisponível — usando fallback LLM_BUDGET_BRL × %d. "
+            "Defina CFO_CASH_LOW_THRESHOLD_BRL para um valor adequado ao seu burn.",
+            default_mult,
+        )
+
     budget = float(os.environ.get("LLM_BUDGET_BRL", "50"))
     multiplier = float(os.environ.get(mult_key, str(default_mult)))
     return budget * multiplier
@@ -149,7 +197,10 @@ class RuleCashLow(ProactiveRule):
 
         try:
             balance_resp = erp_client.get_balance()
-        except (NotImplementedError, Exception):
+        except NotImplementedError:
+            return alerts  # ERP não suporta get_balance — skip silencioso
+        except Exception as e:
+            logger.warning(f"rule_cash_low: falha ao obter saldo: {e}")
             return alerts  # não conseguiu nem o saldo — retorna o que tiver
 
         balance = float(balance_resp.get("balance_brl", 0.0))
@@ -187,7 +238,7 @@ class RuleCashLow(ProactiveRule):
             upcoming_bills = []
 
         projected = balance + incoming - outgoing
-        threshold = _cash_threshold("7d")
+        threshold = _cash_threshold("7d", erp_client=erp_client)
 
         if projected < threshold:
             severity = "critical" if projected < threshold * 0.5 else "warn"
