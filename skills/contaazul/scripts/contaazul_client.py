@@ -350,6 +350,79 @@ class ContaAzulClient(BaseERPClient):
         new_id = str(raw.get("id") or "")
         return {"success": True, "action": "create_receivable", "id": new_id, "raw": raw}
 
+    def list_overdue(self) -> dict:
+        """Filtra payables + receivables vencidos (due_date < hoje, status nao liquidado).
+
+        Retorna lista padronizada com campos: id, description, amount, due_date,
+        days_overdue, record_type. Itera todas as paginas.
+        """
+        from datetime import date
+
+        today = date.today()
+        today_str = today.isoformat()
+        overdue: list = []
+
+        def _fetch_all_payables():
+            page = 1
+            while True:
+                resp = self.list_payables(limit=100, page=page)
+                items = resp.get("items", [])
+                for item in items:
+                    status = self._norm_pay_status(item.get("status", ""))
+                    if status not in ("paid",):
+                        due = item.get("due_date", "9999-99-99")
+                        if due and due < today_str:
+                            try:
+                                days_overdue = (today - date.fromisoformat(due)).days
+                            except Exception:
+                                days_overdue = 0
+                            overdue.append({
+                                "id": item["id"],
+                                "description": item.get("counterparty", ""),
+                                "amount": item.get("amount_brl", 0.0),
+                                "due_date": due,
+                                "days_overdue": days_overdue,
+                                "record_type": "pay",
+                                "raw": item,
+                            })
+                total_pages = resp.get("total_pages", 1)
+                if page >= total_pages or len(items) < 100:
+                    break
+                page += 1
+
+        def _fetch_all_receivables():
+            page = 1
+            while True:
+                resp = self.list_receivables(limit=100, page=page)
+                items = resp.get("items", [])
+                for item in items:
+                    status = self._norm_recv_status(item.get("status", ""))
+                    if status not in ("received",):
+                        due = item.get("due_date", "9999-99-99")
+                        if due and due < today_str:
+                            try:
+                                days_overdue = (today - date.fromisoformat(due)).days
+                            except Exception:
+                                days_overdue = 0
+                            overdue.append({
+                                "id": item["id"],
+                                "description": item.get("counterparty", ""),
+                                "amount": item.get("amount_brl", 0.0),
+                                "due_date": due,
+                                "days_overdue": days_overdue,
+                                "record_type": "recv",
+                                "raw": item,
+                            })
+                total_pages = resp.get("total_pages", 1)
+                if page >= total_pages or len(items) < 100:
+                    break
+                page += 1
+
+        _fetch_all_payables()
+        _fetch_all_receivables()
+        overdue.sort(key=lambda x: x["due_date"])
+        return make_list_response(overdue, total_count=len(overdue))
+
     def cancel_payable(self, id: str) -> dict:
         """ContaAzul não tem DELETE de parcela na v1 pública — marca como cancelado via PATCH."""
         try:
