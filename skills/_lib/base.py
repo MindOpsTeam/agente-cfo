@@ -219,13 +219,41 @@ class BaseERPClient(ABC):
         ...
 
     def list_overdue(self) -> dict:
-        """Default: filter pending with due_date < today from payables + receivables."""
+        """Default: filter pending with due_date < today from payables + receivables.
+
+        Usa paginação completa para não perder registros além da primeira página.
+        Para cada tipo (payables/receivables): itera enquanto houver páginas ou
+        enquanto o número de itens retornados for igual ao limit (heurística de
+        continuação quando total_pages não está disponível no response).
+        """
         from datetime import date
+
+        limit = 200
         today = date.today().isoformat()
-        payables = self.list_payables(limit=200)
-        receivables = self.list_receivables(limit=200)
+
+        def _fetch_all(fetch_fn):
+            all_items: list = []
+            page = 1
+            while True:
+                resp = fetch_fn(limit=limit, page=page)
+                items = resp.get("items", [])
+                all_items.extend(items)
+                total_pages = resp.get("total_pages")
+                if total_pages is not None:
+                    if page >= total_pages:
+                        break
+                else:
+                    # Sem total_pages: continua enquanto receber um resultado cheio
+                    if len(items) < limit:
+                        break
+                page += 1
+            return all_items
+
+        payable_items = _fetch_all(self.list_payables)
+        receivable_items = _fetch_all(self.list_receivables)
+
         overdue = [
-            i for i in payables["items"] + receivables["items"]
+            i for i in payable_items + receivable_items
             if i.get("status") in ("pending", "overdue") and i.get("due_date", "9999") < today
         ]
         return make_list_response(overdue, total_count=len(overdue))

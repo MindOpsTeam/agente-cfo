@@ -44,8 +44,11 @@ def main():
 
     result = subprocess.run(
         ["python3", client_script] + sys.argv[1:],
-        capture_output=False,
+        capture_output=True,
+        text=True,
     )
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
     sys.exit(result.returncode)
 
 
