@@ -8,6 +8,9 @@ import urllib.request
 import urllib.error
 from datetime import datetime, date, timezone, timedelta
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "_lib"))
+from base import BaseERPClient, emit, emit_error
+
 # ── Secrets ──────────────────────────────────────────────────────────────────
 
 def _load_secrets():
@@ -312,6 +315,54 @@ def unified_list_overdue():
     return {"items": overdue, "page": 1, "total_pages": 1, "total_count": len(overdue)}
 
 
+# ── OmieClient — interface BaseERPClient ────────────────────────────────────
+# Wrapeie as funções unified_* existentes para compatibilidade com o daemon
+# proativo e o erp_gateway, que esperam um objeto BaseERPClient.
+
+class OmieClient(BaseERPClient):
+    SKILL_NAME = "omie"
+
+    def _validate_env(self) -> None:
+        # _load_secrets() já foi chamado no topo do módulo via _load_secrets().
+        # BaseERPClient.__init__ chama load_secrets(SKILL_NAME) novamente —
+        # inofensivo pois usa setdefault. Aqui só validamos.
+        global APP_KEY, APP_SECRET
+        APP_KEY = os.environ.get("OMIE_APP_KEY", "")
+        APP_SECRET = os.environ.get("OMIE_APP_SECRET", "")
+        if not APP_KEY or not APP_SECRET:
+            raise RuntimeError("OMIE_APP_KEY e OMIE_APP_SECRET nao definidos. Verifique ~/.openclaw/secrets/omie.env")
+
+    def get_balance(self) -> dict:
+        return unified_get_balance()
+
+    def list_payables(self, from_date=None, to_date=None, limit=50, page=1) -> dict:
+        return unified_list_payables(from_date=from_date, to_date=to_date, limit=limit, page=page)
+
+    def list_receivables(self, from_date=None, to_date=None, limit=50, page=1) -> dict:
+        return unified_list_receivables(from_date=from_date, to_date=to_date, limit=limit, page=page)
+
+    def list_overdue(self, **kwargs) -> dict:
+        return unified_list_overdue()
+
+    def company_info(self) -> dict:
+        return unified_company_info()
+
+    def pay_payable(self, id: str) -> dict:
+        return unified_pay_payable(id)
+
+    def mark_received(self, id: str) -> dict:
+        return unified_mark_received(id)
+
+    def create_payable(self, amount: float, due_date: str, supplier: str, **kwargs) -> dict:
+        return unified_create_payable(amount=amount, due_date=due_date, supplier=supplier, **kwargs)
+
+    def create_receivable(self, amount: float, due_date: str, customer: str, **kwargs) -> dict:
+        return unified_create_receivable(amount=amount, due_date=due_date, customer=customer, **kwargs)
+
+    def cancel_payable(self, id: str) -> dict:
+        return unified_cancel_payable(id)
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def _parse_kwargs(args):
@@ -327,6 +378,13 @@ def _parse_kwargs(args):
     return kwargs
 
 
+_UNIFIED_COMMANDS = {
+    "get_balance", "list_payables", "list_receivables", "list_overdue",
+    "company_info", "pay_payable", "mark_received", "create_payable",
+    "create_receivable", "cancel_payable", "update_category",
+    "get_cash_projection",
+}
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: omie_client.py <command> [args]")
@@ -336,6 +394,12 @@ if __name__ == "__main__":
         print("  list_receivables [--from DATE] [--to DATE] [--limit N] [--page N]")
         print("  list_overdue")
         print("  company_info")
+        print("  pay_payable --id ID")
+        print("  mark_received --id ID")
+        print("  create_payable --amount N --due_date DATE --supplier NAME")
+        print("  create_receivable --amount N --due_date DATE --customer NAME")
+        print("  cancel_payable --id ID")
+        print("  get_cash_projection [--days N]")
         print("\nComandos legados (Omie nativo):")
         print("  clientes_listar [pagina] [por_pagina]")
         print("  clientes_buscar [filtro]")
@@ -356,60 +420,19 @@ if __name__ == "__main__":
 
     command = sys.argv[1]
 
-    try:
-        # ── Comandos unificados CFO ──
-        if command == "get_balance":
-            result = unified_get_balance()
-        elif command == "list_payables":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_list_payables(
-                from_date=kw.get("from"),
-                to_date=kw.get("to"),
-                limit=int(kw.get("limit", 50)),
-                page=int(kw.get("page", 1)),
-            )
-        elif command == "list_receivables":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_list_receivables(
-                from_date=kw.get("from"),
-                to_date=kw.get("to"),
-                limit=int(kw.get("limit", 50)),
-                page=int(kw.get("page", 1)),
-            )
-        elif command == "list_overdue":
-            result = unified_list_overdue()
-        elif command == "company_info":
-            result = unified_company_info()
-        elif command == "pay_payable":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_pay_payable(id=kw.get("id", ""))
-        elif command == "mark_received":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_mark_received(id=kw.get("id", ""))
-        elif command == "create_payable":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_create_payable(
-                amount=float(kw.get("amount", 0)),
-                due_date=kw.get("due_date", ""),
-                supplier=kw.get("supplier", ""),
-                category=kw.get("category"),
-                description=kw.get("description"),
-            )
-        elif command == "create_receivable":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_create_receivable(
-                amount=float(kw.get("amount", 0)),
-                due_date=kw.get("due_date", ""),
-                customer=kw.get("customer", ""),
-                category=kw.get("category"),
-                description=kw.get("description"),
-            )
-        elif command == "cancel_payable":
-            kw = _parse_kwargs(sys.argv[2:])
-            result = unified_cancel_payable(id=kw.get("id", ""))
+    # ── Comandos unificados CFO → delega ao OmieClient (BaseERPClient) ──────
+    if command in _UNIFIED_COMMANDS:
+        try:
+            client = OmieClient()
+            client.run_cli()
+        except RuntimeError as e:
+            emit_error(str(e))
+        sys.exit(0)
 
-        # ── Comandos legados Omie ──
-        elif command == "clientes_listar":
+    try:
+        # ── Comandos legados Omie (retrocompatibilidade) ──────────────────────
+        # Bloco mantido apenas para comandos que nao estao em _UNIFIED_COMMANDS.
+        if command == "clientes_listar":
             page = int(sys.argv[2]) if len(sys.argv) > 2 else 1
             per_page = int(sys.argv[3]) if len(sys.argv) > 3 else 20
             result = clientes_listar(page, per_page)
