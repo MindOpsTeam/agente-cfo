@@ -363,6 +363,85 @@ class BlingClient(BaseERPClient):
         items = data.get("data", []) if isinstance(data, dict) else []
         return make_list_response(items, page=page, total_count=len(items))
 
+    def list_overdue(self) -> dict:
+        """Filtra payables + receivables vencidos (due_date < hoje, status nao pago/recebido).
+
+        Retorna lista padronizada com campos extras: description, days_overdue, record_type.
+        Itera todas as paginas para nao perder registros.
+        """
+        from datetime import date
+
+        today = date.today()
+        today_str = today.isoformat()
+        overdue: list = []
+
+        def _fetch_all_payables():
+            page = 1
+            while True:
+                resp = self.list_payables(limit=100, page=page)
+                items = resp.get("items", [])
+                for item in items:
+                    if item.get("status") == "pending":
+                        due = item.get("due_date", "9999-99-99")
+                        if due and due < today_str:
+                            try:
+                                days_overdue = (today - date.fromisoformat(due)).days
+                            except Exception:
+                                days_overdue = 0
+                            overdue.append({
+                                "id": item["id"],
+                                "description": item.get("counterparty", ""),
+                                "amount": item.get("amount_brl", 0.0),
+                                "due_date": due,
+                                "days_overdue": days_overdue,
+                                "record_type": "pay",
+                                "raw": item,
+                            })
+                total_pages = resp.get("total_pages", 1)
+                if page >= total_pages or len(items) < 100:
+                    break
+                page += 1
+
+        def _fetch_all_receivables():
+            page = 1
+            while True:
+                resp = self.list_receivables(limit=100, page=page)
+                items = resp.get("items", [])
+                for item in items:
+                    if item.get("status") == "pending":
+                        due = item.get("due_date", "9999-99-99")
+                        if due and due < today_str:
+                            try:
+                                days_overdue = (today - date.fromisoformat(due)).days
+                            except Exception:
+                                days_overdue = 0
+                            overdue.append({
+                                "id": item["id"],
+                                "description": item.get("counterparty", ""),
+                                "amount": item.get("amount_brl", 0.0),
+                                "due_date": due,
+                                "days_overdue": days_overdue,
+                                "record_type": "recv",
+                                "raw": item,
+                            })
+                total_pages = resp.get("total_pages", 1)
+                if page >= total_pages or len(items) < 100:
+                    break
+                page += 1
+
+        _fetch_all_payables()
+        _fetch_all_receivables()
+        overdue.sort(key=lambda x: x["due_date"])
+        return make_list_response(overdue, total_count=len(overdue))
+
+    def cancel_payable(self, id: str) -> dict:
+        """Cancela conta a pagar via DELETE /contas-pagar/{id}.
+
+        A API Bling v3 suporta exclusao de titulos nao liquidados via DELETE.
+        """
+        raw = self._delete(f"contas-pagar/{id}")
+        return {"success": True, "action": "cancel_payable", "id": id, "raw": raw}
+
     # ── Contas a pagar — extras ─────────────────────────────────────────────
     def get_payable(self, id: str):
         data = self._get(f"contas-pagar/{id}")
