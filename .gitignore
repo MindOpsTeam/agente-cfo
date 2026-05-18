@@ -1,1 +1,11 @@
 painel-front/
+.env
+.env.*
+!.env.example
+tokens.json
+*.tokens.json
+.venv/
+.claude/
+.playwright-mcp/
+.firecrawl/
+__pycache__/
