@@ -38,23 +38,27 @@
 
 | Categoria | Contagem |
 |-----------|----------|
-| **PASS** (todos critérios ✅) | **16 / 16** Python MCPs |
+| **PASS** (todos critérios ✅) | **17 / 17** Python MCPs |
 | **FAIL** (algum critério ✗) | **0** |
 | **SPECIAL** (não-Python ou canais) | **3** (evolution-api, telegram, supabase) |
-| **Total skills auditadas** | **19** |
+| **Total skills auditadas** | **20** |
 
-**Resultado: 16/16 PASS — nenhum bug de boot encontrado. Zero correções necessárias.**
+**Resultado: 17/17 PASS — nenhum bug de boot encontrado. Zero correções necessárias.**
+
+> **Atualização Sprint IMPL-P2:** `agente-cfo` adicionada como 17ª skill Python com MCP,
+> expondo 14 tools tipadas (cfo_get_balance, cfo_create_payable, cfo_post_reply, etc.).
 
 ---
 
 ## Detalhamento por Skill
 
-### ✅ Skills em PASS (16)
+### ✅ Skills em PASS (17)
 
-Todas as 16 skills Python passaram em todos os 5 critérios:
+Todas as 17 skills Python passaram em todos os 5 critérios:
 
 | skill | tools expostas | categoria |
 |-------|:-:|---|
+| agente-cfo | 14 | CFO virtual (ERP gateway + canal) |
 | asaas | 33 | cobrança |
 | bling | 116 | ERP/e-commerce |
 | contaazul | 32 | financeiro |
@@ -72,7 +76,7 @@ Todas as 16 skills Python passaram em todos os 5 critérios:
 | tiny | 28 | ERP |
 | vhsys | 54 | ERP |
 
-**Total de tools MCP expostas: 1.358**
+**Total de tools MCP expostas: 1.372** (+14 do agente-cfo)
 
 ---
 

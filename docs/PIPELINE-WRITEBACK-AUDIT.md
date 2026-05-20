@@ -519,7 +519,7 @@ Data auditoria: 2026-05-20
 | GAP 4 — pending_write state | FIX 5 | ✅ Fechado |
 | GAP 2 — cfo_write_events | FIX 6 | ✅ Fechado |
 | GAP 5 — dedup | FIX 7 | ✅ Fechado |
-| GAP 3 — MCP agente-cfo | — | ⏳ P2 (backlog) |
-| GAP 8 — dois fluxos paralelos | — | ⏳ P2 (backlog) |
+| GAP 3 — MCP agente-cfo | FIX IMPL-P2 | ✅ Fechado (14 tools) |
+| GAP 8 — dois fluxos paralelos | FIX IMPL-P2 | ✅ Fechado (hooks_dedup) |
 
 Commits: ver `git log --oneline` após sprint.
