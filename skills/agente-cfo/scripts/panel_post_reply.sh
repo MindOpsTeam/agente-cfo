@@ -40,6 +40,26 @@ CHANNEL_NAME="${CHANNEL#*:}"       # "principal" | "marcoscfo_bot" | "user123"
 
 case "$CHANNEL_TYPE" in
 
+    whatsapp)
+        SEND_SH="${WORKSPACE}/evolution-api/scripts/send_message.sh"
+        if [[ -f "$SEND_SH" ]]; then
+            bash "$SEND_SH" "$CHANNEL" "$EXTERNAL_ID" "$REPLY" || \
+                echo "AVISO: evolution-api send_message.sh falhou (não bloqueia envio ao painel)" >&2
+        else
+            echo "AVISO: evolution-api/scripts/send_message.sh não encontrado" >&2
+        fi
+        ;;
+
+    telegram)
+        SEND_SH="${WORKSPACE}/telegram/scripts/send_message.sh"
+        if [[ -f "$SEND_SH" ]]; then
+            bash "$SEND_SH" "$CHANNEL" "$EXTERNAL_ID" "$REPLY" || \
+                echo "AVISO: telegram send_message.sh falhou (não bloqueia envio ao painel)" >&2
+        else
+            echo "AVISO: telegram/scripts/send_message.sh não encontrado" >&2
+        fi
+        ;;
+
     panel)
         # Canal painel — só grava no histórico (resposta já aparece via Supabase realtime)
         echo "✓ Canal painel — resposta via panel_reply.sh"
