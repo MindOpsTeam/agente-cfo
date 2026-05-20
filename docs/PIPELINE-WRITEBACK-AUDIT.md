@@ -505,3 +505,21 @@ Edge functions: 38 funções mapeadas
 Scripts agente-cfo: 40+ arquivos em scripts/
 Data auditoria: 2026-05-20
 ```
+
+---
+
+## Status Pós-Implementação (Sprint IMPL-P0+P1)
+
+| Gap | Fix | Status |
+|-----|-----|--------|
+| GAP 9 — arg order bug | FIX 1 | ✅ Fechado |
+| GAP 7a — outbound WhatsApp | FIX 2 | ✅ Fechado |
+| GAP 7b — outbound Telegram | FIX 3 | ✅ Fechado |
+| GAP 1/4/6 — promptMsg + few-shot | FIX 4 | ✅ Fechado |
+| GAP 4 — pending_write state | FIX 5 | ✅ Fechado |
+| GAP 2 — cfo_write_events | FIX 6 | ✅ Fechado |
+| GAP 5 — dedup | FIX 7 | ✅ Fechado |
+| GAP 3 — MCP agente-cfo | — | ⏳ P2 (backlog) |
+| GAP 8 — dois fluxos paralelos | — | ⏳ P2 (backlog) |
+
+Commits: ver `git log --oneline` após sprint.

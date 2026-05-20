@@ -221,6 +221,24 @@ Confirme sucesso:
 Se falhar:
 > "Erro ao registrar no [ERP]: [mensagem]. Nao foi alterado nada. Tente novamente ou faca manualmente."
 
+### Etapa 5b — Verifica dedup antes de confirmar
+Após chamar `panel_write_event.sh`, verifique o stdout:
+
+- Se retornar `OK: <id>` → write novo, confirme ao dono normalmente.
+- Se retornar `DUPLICATE: <id>` → este lançamento já foi registrado anteriormente.
+  Responda no canal:
+  > "⚠️ Este lançamento já foi registrado anteriormente (id=X).
+  > Se quiser registrar mesmo assim, responda FORÇAR."
+
+  Se o dono responder FORÇAR no próximo turn, refaça o registro com chave aleatória
+  para furar o dedup:
+
+  ```bash
+  bash $SCRIPTS_DIR/panel_write_event.sh \
+    --dedup_key "force_$(date +%s)_$RANDOM" \
+    [demais args idênticos]
+  ```
+
 ### Etapa 6 — Audit log obrigatorio
 
 SEMPRE apos qualquer write (sucesso ou falha):
