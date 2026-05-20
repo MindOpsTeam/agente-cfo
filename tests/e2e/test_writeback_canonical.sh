@@ -127,6 +127,41 @@ grep -q 'auto-discover\|chat-pending-lookup' \
   check "conversa.md menciona auto-discover" "FAIL"
 
 echo ""
+echo "--- COMPAT-1: setup.sh + tools.profile ---"
+SETUP_SH="$REPO_DIR/install/setup.sh"
+[[ -f "$SETUP_SH" ]] && check "install/setup.sh existe" "OK" || check "install/setup.sh existe" "FAIL"
+grep -q 'tools.profile.*coding\|tools\.profile coding' "$SETUP_SH" && \
+  check "setup.sh seta tools.profile=coding" "OK" || \
+  check "setup.sh seta tools.profile=coding" "FAIL"
+grep -q 'approvals allowlist add' "$SETUP_SH" && \
+  check "setup.sh configura approvals allowlist" "OK" || \
+  check "setup.sh configura approvals allowlist" "FAIL"
+grep -q 'systemctl restart openclaw-gateway\|restart.*openclaw-gateway' "$SETUP_SH" && \
+  check "setup.sh faz gateway restart pós-update" "OK" || \
+  check "setup.sh faz gateway restart pós-update" "FAIL"
+grep -q 'AGENTS\.md\|workspace.*bootstrap\|COMPAT-1' "$SETUP_SH" && \
+  check "setup.sh popula workspace bootstrap" "OK" || \
+  check "setup.sh popula workspace bootstrap" "FAIL"
+grep -q '_oc_semver_gte\|_OC_COMPAT_MODE' "$SETUP_SH" && \
+  check "setup.sh detecta versão OpenClaw" "OK" || \
+  check "setup.sh detecta versão OpenClaw" "FAIL"
+bash -n "$SETUP_SH" 2>/dev/null && \
+  check "setup.sh sintaxe bash OK" "OK" || \
+  check "setup.sh sintaxe bash OK" "FAIL"
+
+SKILL_MD="$REPO_DIR/skills/agente-cfo/SKILL.md"
+grep -q '"tools"' "$SKILL_MD" && \
+  check "SKILL.md declara requires.tools" "OK" || \
+  check "SKILL.md declara requires.tools" "FAIL"
+grep -q 'toolsProfile' "$SKILL_MD" && \
+  check "SKILL.md declara toolsProfile" "OK" || \
+  check "SKILL.md declara toolsProfile" "FAIL"
+
+[[ -f "$REPO_DIR/docs/OPENCLAW-2026.5.18-COMPAT.md" ]] && \
+  check "docs/OPENCLAW-2026.5.18-COMPAT.md existe" "OK" || \
+  check "docs/OPENCLAW-2026.5.18-COMPAT.md existe" "FAIL"
+
+echo ""
 echo "================================="
 echo "RESULTADO: $PASS PASS / $FAIL FAIL"
 echo "================================="

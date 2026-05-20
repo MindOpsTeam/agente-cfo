@@ -159,11 +159,34 @@ Instale com:
 
 ok "Dependências OK."
 
-# ── Pre-flight 1b: validar flags do openclaw cron add ────────────────────────
+# ── Pre-flight 1b: detectar versão OpenClaw e validar flags ──────────────────
+# Suporte a 2026.5.x: flags de cron renomeadas (--no-deliver/-light-context mantidos,
+# mas o gateway precisa de restart após npm update para evitar protocol mismatch 1002).
+_OC_VERSION_RAW=$(openclaw --version 2>/dev/null | head -1 || echo "0.0.0")
+_OC_VERSION=$(echo "$_OC_VERSION_RAW" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "0.0.0")
+_OC_MAJOR=$(echo "$_OC_VERSION" | cut -d. -f1)
+_OC_MINOR=$(echo "$_OC_VERSION" | cut -d. -f2)
+_OC_PATCH=$(echo "$_OC_VERSION" | cut -d. -f3)
+
+# Semver >= 2026.5.0?
+_oc_semver_gte() {
+    local maj="$1" min="$2" pat="${3:-0}"
+    [[ "$_OC_MAJOR" -gt "$maj" ]] && return 0
+    [[ "$_OC_MAJOR" -eq "$maj" && "$_OC_MINOR" -gt "$min" ]] && return 0
+    [[ "$_OC_MAJOR" -eq "$maj" && "$_OC_MINOR" -eq "$min" && "$_OC_PATCH" -ge "$pat" ]] && return 0
+    return 1
+}
+
+if _oc_semver_gte 2026 5 0; then
+    info "OpenClaw ${_OC_VERSION} detectado (>= 2026.5.0) — modo compat ativo."
+    _OC_COMPAT_MODE="2026.5"
+else
+    _OC_COMPAT_MODE="legacy"
+fi
+
 if command -v openclaw &>/dev/null; then
     info "Verificando suporte a flags de 'openclaw cron add'..."
     _CRON_HELP=$(openclaw cron add --help 2>&1 || true)
-    _OC_VERSION=$(openclaw --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' | head -1 || echo "desconhecida")
     _CRON_FLAGS_OK=1
 
     for _flag in "--no-deliver" "--light-context" "--session" "--json"; do
@@ -194,6 +217,25 @@ if command -v openclaw &>/dev/null; then
 fi
 npm install -g openclaw@latest 2>&1 | tail -3 || fail "Falha ao instalar OpenClaw."
 ok "OpenClaw: $(openclaw --version 2>/dev/null | head -1)"
+
+# COMPAT-1: Após npm update, re-detectar versão (pode ter atualizado)
+_OC_VERSION=$(openclaw --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "0.0.0")
+_OC_MAJOR=$(echo "$_OC_VERSION" | cut -d. -f1)
+_OC_MINOR=$(echo "$_OC_VERSION" | cut -d. -f2)
+_OC_PATCH=$(echo "$_OC_VERSION" | cut -d. -f3)
+_oc_semver_gte() {
+    local maj="$1" min="$2" pat="${3:-0}"
+    [[ "$_OC_MAJOR" -gt "$maj" ]] && return 0
+    [[ "$_OC_MAJOR" -eq "$maj" && "$_OC_MINOR" -gt "$min" ]] && return 0
+    [[ "$_OC_MAJOR" -eq "$maj" && "$_OC_MINOR" -eq "$min" && "$_OC_PATCH" -ge "$pat" ]] && return 0
+    return 1
+}
+if _oc_semver_gte 2026 5 0; then
+    _OC_COMPAT_MODE="2026.5"
+    info "Versão pós-update: OpenClaw ${_OC_VERSION} (compat 2026.5)"
+else
+    _OC_COMPAT_MODE="legacy"
+fi
 
 
 # Sprint 36 — Pre-instala pacotes npm dos MCP servers populares (evita cold-start por download)
@@ -317,6 +359,113 @@ openclaw config set 'gateway.controlUi.allowedOrigins' '["*"]' 2>&1 | grep -v "^
 # Desabilita device pairing — acesso é via token único no fragment URL
 openclaw config set 'gateway.controlUi.dangerouslyDisableDeviceAuth' true 2>&1 | grep -v "^Config overwrite" || true
 ok "gateway.mode=local + auth.mode=token + controlUi (allowedOrigins=* + dangerouslyDisableDeviceAuth) configurado."
+
+# ── COMPAT-1: tools.profile + exec approvals ─────────────────────────────────
+# Garante que Marcos tenha exec/bash (group:runtime) disponível.
+# Profile "coding" = group:fs + group:runtime + group:web + group:sessions + group:memory + cron
+# Sem isso, trajectory.jsonl mostra tools:0 e Marcos não consegue chamar scripts shell.
+openclaw config set tools.profile coding 2>&1 | grep -v "^Config overwrite" || \
+    warn "tools.profile: falhou — Marcos pode não ter bash disponível."
+ok "tools.profile=coding (exec/bash habilitado para Marcos)."
+
+# Allowlist completa de scripts shell que Marcos chama no Caminho A/B
+# Formato: glob; deve cobrir todos os .sh e .py executados via subprocess
+_EXEC_SCRIPTS=(
+    "${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/*.sh"
+    "${HOME}/.openclaw/workspace/skills/agente-cfo/scripts/*.py"
+    "${HOME}/.openclaw/workspace/skills/evolution-api/scripts/*.sh"
+    "${HOME}/.openclaw/workspace/skills/telegram/scripts/*.sh"
+    "${HOME}/.openclaw/workspace/skills/*/scripts/*.sh"
+    "${HOME}/.openclaw/workspace/skills/*/scripts/*.py"
+)
+for _pat in "${_EXEC_SCRIPTS[@]}"; do
+    openclaw approvals allowlist add "$_pat" 2>/dev/null || \
+        warn "approvals allowlist add '${_pat}': falhou (pode já existir)."
+done
+ok "Exec approvals allowlist configurada para scripts CFO."
+
+# ── COMPAT-1: popular workspace root do agent main ───────────────────────────
+# OpenClaw 2026.5+ lê workspace bootstrap files (AGENTS.md, SOUL.md, etc.)
+# do root definido em agents.defaults.workspace.
+# Se o setup não criar esses arquivos, AGENT.md fica vazio.
+_WS_ROOT="${HOME}/.openclaw/workspace"
+mkdir -p "$_WS_ROOT"
+
+# Não sobrescreve se já existir (idempotente)
+if [[ ! -f "${_WS_ROOT}/AGENTS.md" ]]; then
+    cat > "${_WS_ROOT}/AGENTS.md" << 'AGENTS_EOF'
+# AGENTS.md — Workspace do Agente CFO
+
+Este workspace pertence ao Marcos, CFO virtual.
+
+## Sessão
+
+Antes de qualquer ação:
+1. Leia `SOUL.md` — quem você é
+2. Leia `skills/agente-cfo/identity/identity.md` — identidade detalhada
+3. Leia `skills/agente-cfo/identity/soul.md` — guardrails
+4. Para runs cross-channel: siga `skills/agente-cfo/prompts/conversa.md`
+
+## Tools disponíveis
+
+- `exec` / `bash` — chamada de scripts shell e Python
+- `read`, `write`, `edit` — leitura e edição de arquivos
+- MCP servers: ver `mcp.servers` em openclaw.json
+
+## Workspace
+
+```
+skills/
+  agente-cfo/     — skill principal (prompts, scripts, identidade)
+  omie/           — ERP Omie (mcp_server.py + omie_client.py)
+  [erp escolhido] — ERP ativo (bling/contaazul/granatum/etc)
+  [crm escolhido] — CRM ativo (hubspot/pipedrive/kommo/etc)
+  evolution-api/  — canal WhatsApp via Evolution API
+  telegram/       — canal Telegram
+```
+
+## Red Lines
+
+- Nunca executar write sem confirmação explícita do dono (SIM/NÃO).
+- Nunca inventar números — dado indisponível = "dado indisponível".
+- Nunca exfiltrar dados privados.
+AGENTS_EOF
+    ok "AGENTS.md criado em ${_WS_ROOT}."
+fi
+
+if [[ ! -f "${_WS_ROOT}/SOUL.md" ]]; then
+    # Copia do agente-cfo se existir, senão cria mínimo
+    _CFO_SOUL="${_WS_ROOT}/skills/agente-cfo/identity/soul.md"
+    if [[ -f "$_CFO_SOUL" ]]; then
+        cp "$_CFO_SOUL" "${_WS_ROOT}/SOUL.md"
+        ok "SOUL.md copiado de agente-cfo/identity/soul.md."
+    else
+        cat > "${_WS_ROOT}/SOUL.md" << 'SOUL_EOF'
+# SOUL.md — Marcos, CFO Virtual
+
+Você é Marcos, CFO virtual. Números primeiro, contexto depois.
+Leia skills/agente-cfo/identity/soul.md para guardrails completos.
+SOUL_EOF
+        ok "SOUL.md (mínimo) criado — agente-cfo ainda não instalado."
+    fi
+fi
+
+# Garante que IDENTITY.md aponte para identidade correta
+if [[ ! -f "${_WS_ROOT}/IDENTITY.md" ]]; then
+    cat > "${_WS_ROOT}/IDENTITY.md" << 'IDENTITY_EOF'
+# IDENTITY.md
+
+- **Name:** Marcos
+- **Creature:** CFO Virtual ⚡
+- **Vibe:** direto, numérico, sem firulas financeiras
+- **Emoji:** 💼
+IDENTITY_EOF
+    ok "IDENTITY.md criado."
+    # Aplica identidade no agent main
+    openclaw agents set-identity --agent main --from-identity \
+        --workspace "$_WS_ROOT" 2>/dev/null || \
+        warn "agents set-identity: falhou (non-critical, aplica na próxima init)."
+fi
 
 info "Configurando provider Anthropic no OpenClaw..."
 _ANTHROPIC_PATCH=$(mktemp /tmp/anthropic-cfg-XXXXXX.json5)
@@ -779,6 +928,14 @@ done
 systemctl daemon-reload
 
 # Iniciar gateway e aguardar responder
+# COMPAT-1: Se o gateway já estava rodando com versão anterior, força restart
+# para evitar "protocol mismatch (1002)" ao usar cron add com novo CLI.
+if systemctl is-active --quiet openclaw-gateway 2>/dev/null; then
+    info "Gateway já ativo — reiniciando para sincronizar versão do CLI (COMPAT-1)..."
+    systemctl restart openclaw-gateway 2>/dev/null || warn "restart openclaw-gateway falhou."
+    sleep 5
+fi
+
 systemctl enable --now openclaw-gateway 2>/dev/null || warn "systemctl enable openclaw-gateway falhou."
 
 info "Aguardando OpenClaw Gateway subir na porta 18789 (até 60s)..."
@@ -937,6 +1094,22 @@ step "11/13 — Skill agente-cfo"
 _install_skill_from_repo "agente-cfo"
 chmod +x $SKILL_DEST/scripts/*.sh 2>/dev/null || true
 ok "Skill agente-cfo instalada em $SKILL_DEST"
+
+# COMPAT-1: Agora que agente-cfo está instalada, garantir workspace root bootstrap
+_WS_ROOT="${HOME}/.openclaw/workspace"
+_CFO_SOUL_SRC="${SKILL_DEST}/identity/soul.md"
+_soul_needs_update=0
+[[ ! -f "${_WS_ROOT}/SOUL.md" ]] && _soul_needs_update=1
+[[ -f "${_WS_ROOT}/SOUL.md" ]] && ! grep -q "guardrails" "${_WS_ROOT}/SOUL.md" 2>/dev/null && _soul_needs_update=1
+if [[ -f "$_CFO_SOUL_SRC" && "$_soul_needs_update" -eq 1 ]]; then
+    cp "$_CFO_SOUL_SRC" "${_WS_ROOT}/SOUL.md"
+    ok "SOUL.md atualizado com identity de agente-cfo."
+fi
+# Aplica identidade Marcos no agent main (idempotente)
+openclaw agents set-identity --agent main --from-identity \
+    --workspace "$_WS_ROOT" 2>/dev/null || \
+    warn "agents set-identity: falhou (non-critical)."
+ok "Workspace bootstrap do agent main populado (COMPAT-1)."
 
 # Agora que agente-cfo está instalada, podemos iniciar o wacli-inbound (bug 2 fix)
 # O script wacli_inbound.py precisa existir antes de o service subir.

@@ -7,7 +7,12 @@ metadata:
     "openclaw":
       {
         "emoji": "💼",
-        "requires": { "bins": ["wacli", "python3", "curl", "jq"] },
+        "requires":
+          {
+            "bins": ["wacli", "python3", "curl", "jq"],
+            "tools": ["exec", "read", "write", "edit"],
+          },
+        "toolsProfile": "coding",
       },
   }
 ---
