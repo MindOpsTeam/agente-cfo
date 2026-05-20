@@ -266,6 +266,54 @@ def append_thread(jid: str, role: str, content: str):
         f.write(line)
 
 
+def cross_channel_dedup_check(text: str, jid: str) -> bool:
+    """
+    Consulta a edge fn /hooks-dedup-check para evitar duplo disparo
+    quando Evolution API (Caminho A) e wacli (Caminho B) processam a mesma msg.
+
+    Calcula dedup_key = sha256(channel + jid + text[:60] + time_window)
+    onde time_window = str(int(time.time()) // 30).
+
+    Retorna True se a mensagem já foi vista (skip), False se é nova (continuar).
+    Falha silenciosa: se o painel não responder, deixa prosseguir (fail-open).
+    """
+    import hashlib
+    panel_base = os.environ.get("PANEL_BASE_URL", "")
+    panel_token = os.environ.get("PANEL_TOKEN", "")
+    if not panel_base or not panel_token:
+        return False  # sem painel configurado → fail-open
+
+    time_window = str(int(time.time()) // 30)
+    raw_key = f"whatsapp:{jid}:{text[:60]}:{time_window}"
+    dedup_key = hashlib.sha256(raw_key.encode()).hexdigest()[:32]
+
+    try:
+        body = json.dumps({
+            "dedup_key": dedup_key,
+            "channel": f"whatsapp:wacli",
+            "external_id": jid,
+            "source": "wacli",
+        }).encode()
+        req = urllib.request.Request(
+            f"{panel_base.rstrip('/')}/hooks-dedup-check",
+            data=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Panel-Token": panel_token,
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read().decode())
+            already_seen = result.get("already_seen", False)
+            if already_seen:
+                log(f"[dedup] skip msg já vista por outro canal (key={dedup_key[:8]}…)")
+            return already_seen
+    except Exception as e:
+        log(f"[dedup] check falhou (fail-open): {e}")
+        return False  # fail-open: melhor duplicar do que perder mensagem
+
+
 def dispatch_to_agent(text: str, jid: str, mid: str):
     """
     POST /hooks/agent com o texto da mensagem.
@@ -362,6 +410,11 @@ def run():
                         pass
                     seen_ids.add(mid)
                     log(f"Confirmação de automação processada: {text[:40]}")
+                    continue
+
+                # GAP 8 — dedup cross-channel: verifica se Caminho A já processou esta msg
+                if cross_channel_dedup_check(text, own_jid):
+                    seen_ids.add(mid)
                     continue
 
                 append_thread(own_jid, "user", text)
