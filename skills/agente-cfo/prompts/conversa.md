@@ -12,6 +12,12 @@
 > **Regra de canal:** SEMPRE usar `panel_post_reply.sh` com o canal e external_id
 > recebidos no `[INCOMING_MESSAGE]`. NUNCA usar `_send_whatsapp.sh` diretamente
 > no Caminho A — esse é exclusivo do Caminho B (wacli).
+>
+> **thread_id e run_id:** Sempre passe esses valores quando disponíveis no `[INCOMING_MESSAGE]`
+> (variáveis `${threadId}` e `${runId}` injetadas no promptMsg). São **opcionais** —
+> o script tem auto-discover via `chat-pending-lookup` como fallback — mas passá-los
+> garante atualização imediata do painel sem depender de rede extra. Se não estiverem
+> disponíveis, omita-os e o script resolverá automaticamente.
 
 ## Contexto
 

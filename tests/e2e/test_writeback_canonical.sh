@@ -107,6 +107,26 @@ else
 fi
 
 echo ""
+echo "--- P3: auto-discover thread_id/run_id em panel_post_reply.sh ---"
+POST_REPLY="$REPO_DIR/skills/agente-cfo/scripts/panel_post_reply.sh"
+grep -q 'chat-pending-lookup' "$POST_REPLY" && \
+  check "panel_post_reply.sh chama chat-pending-lookup" "OK" || \
+  check "panel_post_reply.sh chama chat-pending-lookup" "FAIL"
+grep -q 'auto-discover\|DISCOVERED_THREAD\|DISCOVERED_RUN' "$POST_REPLY" && \
+  check "panel_post_reply.sh tem lógica de auto-discover" "OK" || \
+  check "panel_post_reply.sh tem lógica de auto-discover" "FAIL"
+grep -q 'source.*\.env\|set -a' "$POST_REPLY" && \
+  check "panel_post_reply.sh carrega .env" "OK" || \
+  check "panel_post_reply.sh carrega .env" "FAIL"
+bash -n "$POST_REPLY" 2>/dev/null && \
+  check "panel_post_reply.sh sintaxe bash OK" "OK" || \
+  check "panel_post_reply.sh sintaxe bash OK" "FAIL"
+grep -q 'auto-discover\|chat-pending-lookup' \
+  "$REPO_DIR/skills/agente-cfo/prompts/conversa.md" && \
+  check "conversa.md menciona auto-discover" "OK" || \
+  check "conversa.md menciona auto-discover" "FAIL"
+
+echo ""
 echo "================================="
 echo "RESULTADO: $PASS PASS / $FAIL FAIL"
 echo "================================="
