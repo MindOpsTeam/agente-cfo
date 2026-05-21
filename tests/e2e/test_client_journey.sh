@@ -57,8 +57,23 @@ for _s in "${_CFO_SKILLS_IN_SETUP[@]}"; do
 done
 if [[ ${#_MISSING_IN_SETUP[@]} -eq 0 ]]; then
     check_ok "setup.sh contém referência às 20 skills CFO"
+elif [[ -z "$_SETUP_CONTENT" ]]; then
+    check_skip "setup.sh skills CFO" "não foi possível baixar o conteúdo (verifique conectividade)"
 else
-    check_fail "setup.sh skills CFO" "${#_MISSING_IN_SETUP[@]} ausentes: ${_MISSING_IN_SETUP[*]}"
+    # Se repo local está OK mas raw.githubusercontent diverge, pode ser cache CDN (~5min)
+    if [[ -f "$REPO_DIR/install/setup.sh" ]]; then
+        _LOCAL_MISSING=0
+        for _s in "${_CFO_SKILLS_IN_SETUP[@]}"; do
+            grep -q "$_s" "$REPO_DIR/install/setup.sh" || _LOCAL_MISSING=$((_LOCAL_MISSING+1))
+        done
+        if [[ $_LOCAL_MISSING -eq 0 ]]; then
+            check_skip "setup.sh skills CFO no raw.githubusercontent" "cache CDN do GitHub ainda desatualizado — re-testar em ~5min (repo local está correto)"
+        else
+            check_fail "setup.sh skills CFO" "${#_MISSING_IN_SETUP[@]} ausentes: ${_MISSING_IN_SETUP[*]}"
+        fi
+    else
+        check_fail "setup.sh skills CFO" "${#_MISSING_IN_SETUP[@]} ausentes: ${_MISSING_IN_SETUP[*]}"
+    fi
 fi
 
 # Verificar AGENTS.md template público
