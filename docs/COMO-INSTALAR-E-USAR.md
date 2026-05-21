@@ -103,7 +103,7 @@ Acesse seu painel em `https://<seu-painel>.lovable.app` e você vai cair na tela
 
 Na primeira vez que entrar, você vai pra `/onboarding` — um wizard guiado em 7 passos:
 
-> _Print disponível após você fazer login. As telas abaixo são a sequência:_
+![Onboarding wizard — primeira tela com saudação e botão Começar](screenshots/04-onboarding.png)
 
 **Passo 1 — Welcome**  
 "Olá! Vamos configurar o Marcos em 5 minutos." Botão grande **"Começar →"**.
@@ -187,6 +187,8 @@ O que você quer fazer agora?
 
 `https://<seu-painel>.lovable.app/`
 
+![Dashboard principal com KPIs, projeção e widget de atividade recente](screenshots/03-dashboard.png)
+
 O dashboard mostra:
 
 **🟢 Card de status do Marcos** (topo da página)
@@ -247,7 +249,36 @@ Marcos → "✅ Lançado R$ 50,00 em Omie (id 12345), categoria Transporte."
 **Via Painel:**
 
 - **`/chat`** — interface de chat web pra falar direto com o Marcos
+
+![Chat web com Marcos no painel](screenshots/07-chat.png)
+
 - **`/canais/inbox`** — todas conversas WhatsApp/Telegram unificadas (estilo WhatsApp Web)
+
+![Inbox unificada estilo WhatsApp Web — lista de conversas à esquerda, mensagens à direita](screenshots/06-canais-inbox.png)
+
+### 4.3 Configurar integrações
+
+`https://<seu-painel>.lovable.app/integrations`
+
+![Página de Integrações com 17 ERPs/CRMs/cobrança/e-commerce em cards](screenshots/05-integrations.png)
+
+Cada card tem:
+- Status (🟢 conectado / 🟡 sem credencial / 🔴 erro)
+- Botão **"Conectar"** / **"Editar"** — abre dialog pra colar API key
+- Botão **"Testar"** — valida credencial inline (✅/❌)
+- Filtro por categoria (ERP / CRM / Cobrança / E-commerce / BD)
+
+### 4.4 Pareamento WhatsApp e Telegram
+
+**WhatsApp** (`/settings/whatsapp`):
+
+![Página de configuração do WhatsApp](screenshots/09-settings-whatsapp.png)
+
+**Telegram** (`/settings/telegram`):
+
+![Página de configuração do Bot Telegram com guia BotFather](screenshots/10-settings-telegram.png)
+
+Pra Telegram: abra @BotFather no Telegram, digite `/newbot`, escolha nome, pegue o token, cole no painel.
 
 ### 4.3 O que o Marcos faz SOZINHO (sem você pedir)
 
@@ -263,7 +294,11 @@ Marcos é **agentic** — ele toma iniciativa:
 | **A cada 5 min** | Puxa lançamentos novos do ERP, registra no painel |
 | **Sob demanda** | Detecta credencial inválida e te avisa proativamente |
 
-### 4.4 Alertas customizados
+### 4.5 Alertas customizados
+
+`https://<seu-painel>.lovable.app/alerts`
+
+![Página de Alertas customizados](screenshots/08-alerts.png)
 
 Vá em `/alerts` e ative templates prontos com 1 clique:
 

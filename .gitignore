@@ -10,3 +10,5 @@ tokens.json
 .firecrawl/
 __pycache__/
 install/REMIX_URL.txt
+*.local.txt
+install/ADMIN_CREDENTIALS.local.txt
