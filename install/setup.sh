@@ -865,6 +865,35 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+# Unit cfo-erp-sync — ERP→Painel sync bidirecional (Sprint SYNC-1)
+_ERP_SYNC_SCRIPT="${SKILL_DEST}/scripts/erp_sync.py"
+cat > /etc/systemd/system/cfo-erp-sync.service << EOF
+[Unit]
+Description=Agente CFO - ERP Sync (puxa novidades do ERP a cada 5min)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+Environment=ERP_SYNC_INTERVAL_S=300
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_ERP_SYNC_SCRIPT}
+Restart=always
+RestartSec=30
+StartLimitIntervalSec=3600
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now cfo-erp-sync 2>/dev/null || warn "systemctl enable cfo-erp-sync falhou."
+ok "cfo-erp-sync.service iniciado (pull ERP→painel a cada ${ERP_SYNC_INTERVAL_S:-300}s)."
+
 # Unit cfo-metrics-publisher — Observability (Sprint 40)
 _METRICS_PUBLISHER_SCRIPT="${SKILL_DEST}/scripts/metrics_publisher.py"
 cat > /etc/systemd/system/cfo-metrics-publisher.service << EOF

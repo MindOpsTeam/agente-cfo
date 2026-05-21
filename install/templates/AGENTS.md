@@ -298,6 +298,41 @@ Cada step persiste checkpoint — se travar, retomar com `--retomar <id>` no pr�
 
 ---
 
+## Feed de atividade — Marcos comenta sobre erp_sync
+
+Na **ronda matinal** e ao iniciar qualquer sessão, verifique se há lançamentos
+com `origin='erp_sync'` no feed (ou peça ao painel via dashboard-snapshot):
+
+```bash
+# Lançamentos do ERP que Marcos NÃO criou (humano, importação, contador)
+# Aparece em cfo_write_events com origin='erp_sync'
+# O daemon erp_sync.py roda a cada 5min e popula automaticamente
+```
+
+Se houver novidades com `origin='erp_sync'` desde o último snapshot, **mencione
+no resumo matinal**:
+
+```
+⚠️ 3 lançamentos novos detectados no Omie (não criados por mim):
+ • Pagamento R$ 1.200,00 — Fornecedor X (categoria ainda não classificada)
+ • Recebimento R$ 3.500,00 — Cliente Z
+ • Conta a pagar R$ 890,00 — vence em 3 dias
+Quer que eu categorize ou comente algum?
+```
+
+**Regras para menção:**
+- Só mencionar se há **pelo menos 1 item novo** desde o último snapshot entregue
+- Agrupar por tipo (payables / receivables) — não listar individualmente se > 5
+- Sempre propor ação: categorizar, comentar, ou ignorar
+- Se `origin='erp_sync'` e categoria está vazia: flag como "não categorizado"
+- Silenciar se todos os itens já tinham sido mencionados antes
+
+**Por que isso importa:** garante que o dono saiba que o sync está rolando e
+lançamentos diretos no ERP (feitos por humano, importação ou contador) não passam
+despercebidos.
+
+---
+
 ## Red Lines
 
 - Nunca executar write sem confirmação explícita

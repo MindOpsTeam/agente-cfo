@@ -16,6 +16,7 @@ set -euo pipefail
 ACTION=""; ERP=""; ERP_RECORD_ID=""; AMOUNT=""; SUPPLIER=""; DUE_DATE=""
 CATEGORY=""; RAW_TEXT=""; THREAD_ID=""; RUN_ID=""; CHANNEL=""
 STATUS="success"; ERROR_MSG=""; DEDUP_KEY_OVERRIDE=""
+ORIGIN=""  # SYNC-1: 'chat' | 'erp_sync' | 'manual' | 'reconciliation' | 'system'
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --status)         STATUS="$2"; shift 2 ;;
     --error)          ERROR_MSG="$2"; shift 2 ;;
     --dedup_key)      DEDUP_KEY_OVERRIDE="$2"; shift 2 ;;
+    --origin)         ORIGIN="$2"; shift 2 ;;  # SYNC-1
     *) echo "Arg desconhecido: $1" >&2; shift ;;
   esac
 done
@@ -62,7 +64,7 @@ PAYLOAD=$(
   CATEGORY="$CATEGORY" RAW_TEXT="$RAW_TEXT" THREAD_ID="$THREAD_ID" \
   RUN_ID="$RUN_ID" CHANNEL="$CHANNEL" STATUS="$STATUS" \
   ERROR_MSG="$ERROR_MSG" INSTANCE_ID="$INSTANCE_ID" \
-  DEDUP_KEY_OVERRIDE="$DEDUP_KEY_OVERRIDE" \
+  DEDUP_KEY_OVERRIDE="$DEDUP_KEY_OVERRIDE" ORIGIN="$ORIGIN" \
   python3 -c '
 import json, os
 def opt(k):
@@ -93,6 +95,7 @@ d = {
   "error":        opt("ERROR_MSG"),
   "instance_id":  opt("INSTANCE_ID"),
   "dedup_key":    opt("DEDUP_KEY_OVERRIDE"),
+  "origin":       opt("ORIGIN"),  # SYNC-1: erp_sync | chat | manual | reconciliation | system
 }
 print(json.dumps({k: v for k, v in d.items() if v is not None}))
 '
