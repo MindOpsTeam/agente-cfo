@@ -21,6 +21,9 @@ import os
 import sys
 import subprocess
 import json
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from credential_error import wrap_subprocess_result
 
 
 def main():
@@ -49,8 +52,15 @@ def main():
 
     result = subprocess.run(
         ["python3", client_script] + sys.argv[1:],
-        capture_output=False,
+        capture_output=True,
+        text=True,
     )
+    cred_err = wrap_subprocess_result(ecom_name, result)
+    if cred_err and cred_err.get("error_kind") in ("credential_invalid", "scopes_missing"):
+        print(json.dumps(cred_err, ensure_ascii=False))
+        sys.exit(0)
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
     sys.exit(result.returncode)
 
 

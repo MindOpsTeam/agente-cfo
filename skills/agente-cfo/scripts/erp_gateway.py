@@ -35,6 +35,9 @@ import sys
 import subprocess
 import json
 from pathlib import Path
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).parent))
+from credential_error import wrap_subprocess_result  # noqa: E402
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -181,6 +184,12 @@ def main():
             text=True,
         )
 
+        # ── Credencial inválida (detecção imediata, antes de fallback) ────────
+        cred_err = wrap_subprocess_result(erp_name, result)
+        if cred_err and cred_err.get("error_kind") in ("credential_invalid", "scopes_missing"):
+            print(json.dumps(cred_err, ensure_ascii=False))
+            sys.exit(0)  # Marcos lê message_pt e responde ao user
+
         # Avalia se o ERP teve sucesso
         erp_ok = False
         erp_record_id = ""
@@ -234,12 +243,17 @@ def main():
             print(json.dumps(output))
             sys.exit(0)   # ← sempre 0: Marcos não precisa de recovery turn
 
-    # ── Todos os outros comandos: proxy simples ───────────────────────────────
+    # ── Todos os outros comandos: proxy simples (com credential check) ────────
     result = subprocess.run(
         ["python3", client_script] + sys.argv[1:],
         capture_output=True,
         text=True,
     )
+    # Verifica credencial antes de repassar stdout bruto
+    cred_err = wrap_subprocess_result(erp_name, result)
+    if cred_err and cred_err.get("error_kind") in ("credential_invalid", "scopes_missing"):
+        print(json.dumps(cred_err, ensure_ascii=False))
+        sys.exit(0)
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
     sys.exit(result.returncode)

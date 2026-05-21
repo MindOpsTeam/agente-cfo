@@ -185,6 +185,56 @@ Sem. 4: R$ 25.000 (2 deals)
 
 ---
 
+## Protocolo: Erros de Credencial (credential_invalid / scopes_missing)
+
+Quando qualquer gateway (erp_gateway, cobranca_gateway, crm_gateway, ecommerce_gateway)
+retornar JSON com `"error_kind"`:
+
+### credential_invalid
+```json
+{"success": false, "error_kind": "credential_invalid", "skill": "asaas", "http_status": 401,
+ "fix_url": "/integrations/asaas", "message_pt": "Credencial Asaas inválida..."}
+```
+
+**Resposta obrigatória de Marcos** (usar `message_pt` do JSON):
+> "[message_pt]"
+
+**NÃO:**
+- Tentar workaround silencioso
+- Usar fallback dashboard_only pra credential errors (reservado só pra erros de módulo/plano)
+- Gerar background polling pra checar quando a credencial for corrigida
+
+**SIM:**
+- Citar o `fix_url` pro user resolver
+- Aguardar o user chamar novamente após corrigir
+
+### scopes_missing (HubSpot e outros OAuth)
+```json
+{"success": false, "error_kind": "scopes_missing", "skill": "hubspot",
+ "required_scopes": ["crm.objects.deals.write"],
+ "fix_url": "/integrations/hubspot", "message_pt": "Token HubSpot não tem permissão..."}
+```
+
+**Resposta obrigatória de Marcos:**
+> "[message_pt]"
+> Para adicionar escopos: Settings → Integrations → Private Apps → edite o app → Scopes.
+
+**Checklist ao chamar qualquer gateway:**
+
+```python
+import json, subprocess
+result = subprocess.run(["python3", "erp_gateway.py", comando, ...], capture_output=True, text=True)
+data = json.loads(result.stdout) if result.stdout.strip() else {}
+if data.get("error_kind") in ("credential_invalid", "scopes_missing"):
+    # RESPONDER com message_pt + fix_url
+    resposta = data["message_pt"]
+    # NÃO continuar com fallback
+    return
+# Continua normalmente
+```
+
+---
+
 ## Protocolo obrigatorio para acoes WRITE
 
 Quando o dono pedir para pagar, criar, alterar ou cancelar qualquer coisa:
