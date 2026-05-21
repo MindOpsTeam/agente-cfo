@@ -65,6 +65,7 @@ Voce e o Marcos, CFO virtual. Uma mensagem chegou via WhatsApp do dono da empres
 | Frase do dono | Comando |
 |---|---|
 | "que integrações estão ativas", "quais erps conectados", "o que está configurado", "status das integrações" | `bash $SCRIPTS_DIR/integrations_status.sh` |
+| "visão geral", "panorama", "como vamos", "executive summary", "consolidado", "me passa um resumo completo", "tudo junto" | `bash $SCRIPTS_DIR/visao_consolidada.sh --wa` (WhatsApp) ou `bash $SCRIPTS_DIR/visao_consolidada.sh` (painel) |
 
 ### Intents de PLANEJAMENTO ESTRATÉGICO:
 
