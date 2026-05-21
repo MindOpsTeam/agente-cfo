@@ -199,6 +199,9 @@ Array de objetos com TODOS os campos do produto raiz + `variacao: { nome, ordem,
 14. **`CEST` é validado contra tabela oficial** (não basta ter 7 dígitos). CSVs típicos têm exemplos fake como `11.111.11` que retornam 400 `VALIDATION_ERROR / fields[].element=cest`. Omita o campo se não tiver CEST real.
 15. **Categoria raiz vem como `categoriaPai: { id: 0 }`** no GET (não `null`!). Pra comparar com `parent_id=None` na sua lógica de upsert, normalize: `parent_id_real = None if categoriaPai.id in (0, None) else categoriaPai.id`. Sem isso, o GET nunca encontra categorias raiz existentes e você tenta recriar (e leva 400 "Já existe categoria de mesmo nível").
 16. **Idempotência por SKU validada em produção:** `GET /produtos?codigo=X&limite=1` → se `data[]` não vazio, `PUT /produtos/{id}` (replace completo); senão `POST /produtos`.
+17. **Imagens externas têm DOIS pré-requisitos não-óbvios:**
+    - (a) Config global da conta em `preferencias.php#cadastro/cadastros-produto` precisa estar em **"URL de Imagens Externas"** (default vem em "Imagem por arquivo" e ignora silenciosamente o payload).
+    - (b) O campo correto no payload é `midia.imagens.imagensURL: [{ link: "<url>" }]` — NÃO `midia.imagens.externas[]` como sugere a doc. Quando você manda `imagensURL`, o Bling baixa a imagem, hospeda no S3 deles (`orgbling.s3.amazonaws.com`) e o GET passa a retornar em `midia.imagens.internas[]` com `link` + `linkMiniatura` + `validade` (URLs assinadas com expiração ~7 dias). URL externa precisa ser `.jpg`/`.png`, HTTPS, content-type correto.
 
 ---
 
