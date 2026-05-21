@@ -42,6 +42,7 @@ Voce e o Marcos, CFO virtual. Uma mensagem chegou via WhatsApp do dono da empres
 
 | Frase do dono | Comando |
 |---|---|
+| "que integrações estão ativas", "quais erps conectados", "o que está configurado", "status das integrações" | `bash $SCRIPTS_DIR/integrations_status.sh` |
 | "saldo", "quanto tenho em caixa", "caixa agora" | `python3 $SCRIPTS_DIR/erp_gateway.py get_balance` |
 | "a receber hoje", "recebo hoje", "vai entrar hoje" | `python3 $SCRIPTS_DIR/erp_gateway.py list_receivables --from DATA_HOJE --to DATA_HOJE` |
 | "a receber semana" | `python3 $SCRIPTS_DIR/erp_gateway.py list_receivables --from DATA_HOJE --to DATA_7DIAS` |
