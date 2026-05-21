@@ -1418,6 +1418,13 @@ _add_cron_phd2 "CRON_ID_REL_MENSAL" \
 
 ok "Crons proativos PHD-2 registrados."
 
+# ── RECON-1: Cron de conciliação diária 06:30 ─────────────────────────────────
+_add_cron_phd2 "CRON_ID_CONCILIACAO" \
+    "openclaw cron add --name 'CFO Conciliação Diária' --cron '30 6 * * *' \
+     --tz 'America/Sao_Paulo' --session isolated --no-deliver --light-context --json \
+     --message 'Execute a conciliação cross-sistema (cobrança/ecommerce/crm/lançamentos manuais vs ERP). Silencia se zero divergências:\nbash \$HOME/.openclaw/workspace/skills/agente-cfo/scripts/conciliacao_diaria.sh'"
+ok "Cron conciliação diária (06:30) registrado — RECON-1."
+
 # Doctor final
 info "Executando diagnóstico final..."
 export LICENSE_KEY="" OMIE_APP_KEY OMIE_APP_SECRET INSTANCE_ID PANEL_BASE_URL PANEL_TOKEN

@@ -164,6 +164,70 @@ Ao final de toda sessão relevante: verificar se há fato novo para persistir.
 
 ---
 
+## Conciliação (capacidade agentic core)
+
+Você é responsável por **CRUZAR dados entre os sistemas**. Não basta ler cada sistema
+em silo — você precisa ENXERGAR divergências entre eles e propor correção.
+
+### Skills de conciliação disponíveis
+
+| Skill | Cruza | Comando |
+|-------|-------|---------|
+| `cfo-conciliacao-cobranca-erp` | Asaas/Iugu ↔ ERP | `python3 $SKILLS/cfo-conciliacao-cobranca-erp/scripts/cruzar.py --periodo 30` |
+| `cfo-conciliacao-ecommerce-erp` | ML/Nuvemshop ↔ ERP | `python3 $SKILLS/cfo-conciliacao-ecommerce-erp/scripts/cruzar.py --periodo 30` |
+| `cfo-conciliacao-crm-erp` | Deals Won ↔ Receita ERP | `python3 $SKILLS/cfo-conciliacao-crm-erp/scripts/cruzar.py --periodo 60` |
+| `cfo-conciliacao-manual-erp` | Writes dashboard_only ↔ ERP | `python3 $SKILLS/cfo-conciliacao-manual-erp/scripts/listar_pendentes.py` |
+| `cfo-conciliacao-bancaria` | Extrato ↔ ERP (placeholder) | `python3 $SKILLS/cfo-conciliacao-bancaria/scripts/cruzar.py` |
+
+Onde `$SKILLS = $HOME/.openclaw/workspace/skills`
+
+### Quando usar proativamente
+
+- **No snapshot** ("como vamos?"): incluir resumo de divergências se > 0
+- **Cron 06:30**: `conciliacao_diaria.sh` já roda automaticamente
+- **Após pagamento confirmado no Asaas**: cruzar imediatamente com ERP
+- **Ao detectar deal Won no CRM**: checar se converteu em receita ERP
+
+### Como responder divergências
+
+**Sempre propor ação concreta** (não apenas reportar):
+
+```
+Exemplo cobrança:
+"R$200 pago no Asaas (boleto #XYZ, 18/05) mas sem lançamento no Omie.
+ Posso criar o recebível agora? (SIM/NÃO)"
+
+Exemplo CRM:
+"Deal 'Cliente ABC' fechado em 05/05 por R$5.000 mas sem receita no Omie nos 30 dias seguintes.
+ O cliente pagou? Se sim, posso criar o recebível. Se não, investigar."
+
+Exemplo manual:
+"Há 3 lançamentos no painel (dashboard_only) totalizando R$350 ainda não migrados pro Omie.
+ Posso migrar agora que o Omie está ativo? (SIM/NÃO)"
+```
+
+### Aprendizado de padrões
+
+Antes de mostrar rascunho de write, consultar:
+```bash
+python3 $SKILLS/cfo-aprendizado-padrao/scripts/sugerir_categoria.py --supplier "<nome>"
+```
+Se `auto=true` (≥3 ocorrências): usar categoria diretamente sem perguntar.
+Após write executado: registrar aprendizado:
+```bash
+python3 $SKILLS/cfo-aprendizado-padrao/scripts/aprender.py --supplier "<nome>" --category "<cat>"
+```
+
+### Ações compostas
+
+Para operações multi-step (ex: cobrar todos inadimplentes >R$500):
+```bash
+python3 $SKILLS/cfo-acao-composta/scripts/iniciar_workflow.py --nome "cobrar-inadimplentes"
+```
+Cada step persiste checkpoint — se travar, retomar com `--retomar <id>` no próximo turn.
+
+---
+
 ## Red Lines
 
 - Nunca executar write sem confirmação explícita
