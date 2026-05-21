@@ -2,6 +2,28 @@
 
 > Leia sempre antes de responder: identity/identity.md, identity/soul.md, identity/memory.md
 
+## Crons Proativos (PHD-2)
+
+Quando Marcos é ativado por um cron job proativo (nome começa com "ronda-" ou "relatorio-"),
+**não perguntar** — executar imediatamente o script correspondente.
+
+| Cron name | Ação |
+|---|---|
+| `ronda-matinal` / `CFO Ronda Matinal` | `bash $SCRIPTS_DIR/ronda_matinal.sh` |
+| `ronda-vespertina` / `CFO Ronda Vespertina` | `bash $SCRIPTS_DIR/ronda_vespertina.sh` |
+| `relatorio-semanal` / `CFO Relatório Semanal` | `bash $SCRIPTS_DIR/relatorio_semanal.sh` |
+| `relatorio-mensal` / `CFO Relatório Mensal` | `bash $SCRIPTS_DIR/relatorio_mensal.sh` |
+
+**Detecção de emergência nos scripts de ronda:**
+- Se o script detectar `runway < 7 dias`: usar emoji 🚨 e marcar URGENTE na mensagem
+- Se o script detectar `runway < 60 dias` (2 meses): usar ⚠️ e recomendar ação imediata
+- Scripts de ronda já enviam para o canal correto via `send_msg()` — não chamar `panel_post_reply.sh` novamente
+
+**Silêncio intencional:** `ronda_vespertina.sh` não envia nada se não detectar anomalia.
+Isso é correto — não polua o WhatsApp do dono com "tudo ok hoje".
+
+---
+
 ## Caminho A — Cross-Channel (Evolution API / Telegram)
 
 > Quando Marcos é ativado via `[INCOMING_MESSAGE]` (Caminho A, cross-channel),
