@@ -1351,6 +1351,73 @@ chmod +x "${SCRIPTS_DIR}/backup_config.sh" "${SCRIPTS_DIR}/restore_config.sh" 2>
 
 ok "Cron jobs registrados. IDs em: $CRON_IDS_FILE"
 
+# ── PHD-2: Crons proativos do CFO doutor ─────────────────────────────────────
+# Ronda matinal, vespertina, relatório semanal e mensal.
+# Usa _add_cron_if_missing com fallback warn (não aborta o setup se falhar).
+step "PHD-2 — Crons proativos CFO"
+
+_add_cron_phd2() {
+    local var_name="$1" cron_cmd="$2"
+    # Verifica se já existe pelo nome no cron list
+    local _existing
+    _existing=$(openclaw cron list --json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    jobs = json.load(sys.stdin)
+    names = [j.get('name','') or j.get('jobName','') for j in jobs]
+    print('exists' if any('${var_name}' in n or '${var_name}'.replace('_','-').lower() in n.lower() for n in names) else 'missing')
+except:
+    print('missing')
+" 2>/dev/null || echo "missing")
+
+    if [[ "$_existing" == "exists" ]]; then
+        ok "Cron '${var_name}' já existe — pulando."
+        return
+    fi
+
+    local new_id
+    new_id=$(eval "$cron_cmd" 2>&1 | python3 -c "
+import sys, json, re
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+    print(d.get('id') or d.get('jobId',''))
+except:
+    m = re.search(r'[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}', raw)
+    print(m.group() if m else '')
+" 2>/dev/null || echo "") || new_id=""
+
+    if [[ -n "$new_id" ]]; then
+        { grep -v "^${var_name}=" "$CRON_IDS_FILE" 2>/dev/null || true; echo "${var_name}=${new_id}"; } \
+            > "${CRON_IDS_FILE}.tmp" && mv "${CRON_IDS_FILE}.tmp" "$CRON_IDS_FILE"
+        ok "Cron ${var_name}: $new_id"
+    else
+        warn "Cron '${var_name}' não pôde ser criado — continuando. (executar manualmente depois: $cron_cmd)"
+    fi
+}
+
+# Ronda matinal 07h
+_add_cron_phd2 "CRON_ID_RONDA_MANHA" \
+    "openclaw cron add --name 'CFO Ronda Matinal PhD' --cron '0 7 * * *' --tz 'America/Sao_Paulo' --session isolated --no-deliver --light-context --json \
+     --message 'Execute o script de ronda matinal para fazer discovery financeiro proativo e enviar snapshot ao dono:\nbash \$HOME/.openclaw/workspace/skills/agente-cfo/scripts/ronda_matinal.sh'"
+
+# Ronda vespertina 18h
+_add_cron_phd2 "CRON_ID_RONDA_TARDE" \
+    "openclaw cron add --name 'CFO Ronda Vespertina PhD' --cron '0 18 * * *' --tz 'America/Sao_Paulo' --session isolated --no-deliver --light-context --json \
+     --message 'Execute o script de ronda vespertina para detectar anomalias do dia e alertar o dono se relevante (silencia se nada relevante):\nbash \$HOME/.openclaw/workspace/skills/agente-cfo/scripts/ronda_vespertina.sh'"
+
+# Relatório semanal — sexta 16h
+_add_cron_phd2 "CRON_ID_REL_SEMANAL" \
+    "openclaw cron add --name 'CFO Relatório Semanal PhD' --cron '0 16 * * 5' --tz 'America/Sao_Paulo' --session isolated --no-deliver --json \
+     --message 'Execute o relatório semanal executivo e envie resumo ao dono:\nbash \$HOME/.openclaw/workspace/skills/agente-cfo/scripts/relatorio_semanal.sh'"
+
+# Relatório mensal — dia 1 às 08h
+_add_cron_phd2 "CRON_ID_REL_MENSAL" \
+    "openclaw cron add --name 'CFO Relatório Mensal PhD' --cron '0 8 1 * *' --tz 'America/Sao_Paulo' --session isolated --no-deliver --json \
+     --message 'Execute o relatório mensal completo (DRE + comparativo MoM) e envie ao dono:\nbash \$HOME/.openclaw/workspace/skills/agente-cfo/scripts/relatorio_mensal.sh'"
+
+ok "Crons proativos PHD-2 registrados."
+
 # Doctor final
 info "Executando diagnóstico final..."
 export LICENSE_KEY="" OMIE_APP_KEY OMIE_APP_SECRET INSTANCE_ID PANEL_BASE_URL PANEL_TOKEN
