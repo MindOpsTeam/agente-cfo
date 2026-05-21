@@ -418,13 +418,31 @@ if [[ ! -f "${_WS_ROOT}/AGENTS.md" ]] || grep -q "Workspace do Agente CFO" "${_W
     done
 
     if [[ $_APPLIED -eq 0 ]]; then
-        # Fallback: clone rápido apenas do template
+        # Fallback 1: clone rápido apenas do template
         _TMPL_CLONE=$(mktemp -d /tmp/agente-cfo-tmpl-XXXXX)
         git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_CLONE" 2>/dev/null && \
             (cd "$_TMPL_CLONE" && git sparse-checkout set "install/templates") && \
             [[ -f "$_TMPL_CLONE/install/templates/AGENTS.md" ]] && \
             _apply_agents_template "$_TMPL_CLONE/install/templates/AGENTS.md" && _APPLIED=1
         rm -rf "$_TMPL_CLONE" 2>/dev/null || true
+    fi
+
+    if [[ $_APPLIED -eq 0 ]]; then
+        # Fallback 2: curl raw do GitHub (funciona mesmo sem git sparse-checkout disponível)
+        info "Tentando AGENTS.md via curl raw do GitHub..."
+        _RAW_AGENTS_URL="https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/templates/AGENTS.md"
+        if curl -fsSL --max-time 20 "$_RAW_AGENTS_URL" -o "${_WS_ROOT}/AGENTS.md" 2>/dev/null; then
+            # Valida que o arquivo baixado é o template PhD (não uma página de erro HTML)
+            if grep -qiE 'Marcos|CFO|PhD|Planejador|Conciliação' "${_WS_ROOT}/AGENTS.md" 2>/dev/null; then
+                ok "AGENTS.md PhD baixado via curl raw (GitHub)."
+                _APPLIED=1
+            else
+                rm -f "${_WS_ROOT}/AGENTS.md" 2>/dev/null || true
+                warn "Arquivo baixado via curl não é o template PhD esperado."
+            fi
+        else
+            warn "curl raw do GitHub falhou para AGENTS.md."
+        fi
     fi
 
     if [[ $_APPLIED -eq 0 ]]; then
@@ -1117,26 +1135,54 @@ openclaw agents set-identity --agent main --from-identity \
     warn "agents set-identity: falhou (non-critical)."
 ok "Workspace bootstrap do agent main populado (COMPAT-1)."
 
-# PHD-1: Aplicar template AGENTS.md PhD (agora que agente-cfo está instalada com o template)
+# DIST-1: Aplicar template AGENTS.md PhD (agora que agente-cfo está instalada)
+# Estratégia multi-fallback: git sparse → curl raw → mínimo inline
 _WS_ROOT="${HOME}/.openclaw/workspace"
-_AGENTS_PHD="${SKILL_DEST}/../../install/templates/AGENTS.md"
-# Tenta a partir do repo clonado em SKILL_DEST (estrutura: workspace/skills/agente-cfo)
-# O template está em workspace/skills/agente-cfo/../../../install/templates → não existe
-# Mas o clone temporário guardou no /tmp durante _install_skill_from_repo
-# Por isso fazemos clone mínimo só do template
+_AGENTS_PHD_APPLIED=0
+
+_apply_agents_phd() {
+    local src="$1"
+    [[ -f "$src" ]] || return 1
+    grep -qiE 'Marcos|CFO|PhD|Planejador|Conciliação' "$src" 2>/dev/null || return 1
+    cp "$src" "${_WS_ROOT}/AGENTS.md"
+    ok "AGENTS.md PhD aplicado de: $src"
+    _AGENTS_PHD_APPLIED=1
+}
+
+# Tentativa 1: git sparse-checkout
 _TMPL_SRC=$(mktemp -d /tmp/cfo-agents-phd-XXXXX)
 if git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_SRC" 2>/dev/null; then
     (cd "$_TMPL_SRC" && git sparse-checkout set "install/templates" 2>/dev/null)
-    if [[ -f "$_TMPL_SRC/install/templates/AGENTS.md" ]]; then
-        cp "$_TMPL_SRC/install/templates/AGENTS.md" "${_WS_ROOT}/AGENTS.md"
-        ok "AGENTS.md PhD aplicado (Sprint PHD-1)."
-    fi
+    _apply_agents_phd "$_TMPL_SRC/install/templates/AGENTS.md" || true
 fi
 rm -rf "$_TMPL_SRC" 2>/dev/null || true
 
-# PHD-1: Instalar 7 skills CFO especializadas
-step "11b/13 — Skills CFO especializadas (PHD-1)"
+# Tentativa 2: curl raw GitHub (fallback sem git)
+if [[ $_AGENTS_PHD_APPLIED -eq 0 ]]; then
+    info "Baixando AGENTS.md PhD via curl raw (fallback)..."
+    _RAW_URL="https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/templates/AGENTS.md"
+    _TMP_AGENTS=$(mktemp /tmp/agents-phd-XXXXX.md)
+    if curl -fsSL --max-time 20 "$_RAW_URL" -o "$_TMP_AGENTS" 2>/dev/null; then
+        _apply_agents_phd "$_TMP_AGENTS" || warn "AGENTS.md baixado via curl não parece válido."
+    else
+        warn "curl raw GitHub falhou para AGENTS.md (sem conectividade?)."
+    fi
+    rm -f "$_TMP_AGENTS" 2>/dev/null || true
+fi
+
+# Fallback final: não sobrescreve se já existe algum AGENTS.md
+if [[ $_AGENTS_PHD_APPLIED -eq 0 ]]; then
+    if [[ -f "${_WS_ROOT}/AGENTS.md" ]]; then
+        warn "AGENTS.md PhD não aplicado — mantendo versão existente."
+    else
+        warn "AGENTS.md PhD não aplicado e nenhum existente — Marcos usará defaults de SOUL.md."
+    fi
+fi
+
+# DIST-1: Instalar TODAS as 20 skills CFO especializadas (all-skills guaranteed)
+step "11b/13 — Skills CFO especializadas (DIST-1: all 20)"
 _CFO_SKILLS=(
+    # Análise e relatórios
     cfo-analise-estrategica
     cfo-projecao
     cfo-inadimplencia
@@ -1144,11 +1190,32 @@ _CFO_SKILLS=(
     cfo-tributacao-br
     cfo-cobranca-orquestrada
     cfo-relatorios-executivos
+    # Conciliação cross-sistema
+    cfo-conciliacao-cobranca-erp
+    cfo-conciliacao-ecommerce-erp
+    cfo-conciliacao-crm-erp
+    cfo-conciliacao-manual-erp
+    cfo-conciliacao-bancaria
+    # Aprendizado e ação
+    cfo-aprendizado-padrao
+    cfo-acao-composta
+    # Planejamento e cenários
+    cfo-planejamento
+    cfo-cenarios-nomeados
+    cfo-what-if
+    cfo-calendario-acoes
+    cfo-sensitivity
+    cfo-decisao-estrategica
 )
+_CFO_SKILL_FAIL=0
 for _skill in "${_CFO_SKILLS[@]}"; do
-    _install_skill_from_repo "$_skill" || warn "Skill ${_skill}: falhou ao instalar (não-crítico)."
+    _install_skill_from_repo "$_skill" || { warn "Skill ${_skill}: falhou ao instalar (não-crítico)."; _CFO_SKILL_FAIL=$((_CFO_SKILL_FAIL+1)); }
 done
-ok "Skills CFO PhD instaladas: ${_CFO_SKILLS[*]}"
+if [[ $_CFO_SKILL_FAIL -eq 0 ]]; then
+    ok "Todas as 20 skills CFO instaladas com sucesso."
+else
+    warn "${_CFO_SKILL_FAIL} skill(s) CFO falharam — verifique conectividade com ${SKILL_REPO}."
+fi
 
 # PHD-1: Criar diretório de memória financeira
 mkdir -p "${HOME}/.agente-cfo/memory"
@@ -1448,6 +1515,87 @@ if [[ -f "$RUN_ALL_SCRIPT" ]]; then
     chmod +x "$RUN_ALL_SCRIPT"
     bash "$RUN_ALL_SCRIPT" --fast --no-panel 2>&1 | tail -10 || \
         warn "Algum smoke test falhou — ver acima para detalhes"
+fi
+
+# ── DIST-1: Smoke pós-instalação "all-skills guaranteed" ─────────────────────
+step "DIST-1 — Smoke pós-instalação"
+
+_SMOKE_PASS=0; _SMOKE_FAIL=0
+_smoke_check() {
+    local label="$1" result="$2"
+    if [[ "$result" == "OK" ]]; then
+        echo -e "  ${GREEN}✅${NC} $label"
+        _SMOKE_PASS=$((_SMOKE_PASS+1))
+    else
+        echo -e "  ${RED}❌${NC} $label — $result"
+        _SMOKE_FAIL=$((_SMOKE_FAIL+1))
+    fi
+}
+
+# 1. Verificar que todas as 20 skills CFO estão instaladas
+_SKILLS_ROOT="${HOME}/.openclaw/workspace/skills"
+_CFO_EXPECTED=(
+    cfo-analise-estrategica cfo-projecao cfo-inadimplencia cfo-anomalias
+    cfo-tributacao-br cfo-cobranca-orquestrada cfo-relatorios-executivos
+    cfo-conciliacao-cobranca-erp cfo-conciliacao-ecommerce-erp
+    cfo-conciliacao-crm-erp cfo-conciliacao-manual-erp cfo-conciliacao-bancaria
+    cfo-aprendizado-padrao cfo-acao-composta
+    cfo-planejamento cfo-cenarios-nomeados cfo-what-if cfo-calendario-acoes
+    cfo-sensitivity cfo-decisao-estrategica
+)
+_CFO_MISSING=0
+for _s in "${_CFO_EXPECTED[@]}"; do
+    [[ -f "${_SKILLS_ROOT}/${_s}/SKILL.md" ]] || _CFO_MISSING=$((_CFO_MISSING+1))
+done
+if [[ $_CFO_MISSING -eq 0 ]]; then
+    _smoke_check "20 skills CFO instaladas" "OK"
+else
+    _smoke_check "Skills CFO" "${_CFO_MISSING} skill(s) ausentes (re-execute setup.sh)"
+fi
+
+# 2. Verificar integrations_status.sh
+_INTEG_SCRIPT="${SKILL_DEST}/scripts/integrations_status.sh"
+if [[ -f "$_INTEG_SCRIPT" ]]; then
+    _INTEG_OUT=$(bash "$_INTEG_SCRIPT" 2>&1 || true)
+    echo "$_INTEG_OUT" | grep -qiE '✅|OK|connected|ativo' && \
+        _smoke_check "integrations_status.sh" "OK" || \
+        _smoke_check "integrations_status.sh" "sem integrações ativas (cole credenciais no painel)"
+else
+    _smoke_check "integrations_status.sh" "script não encontrado (non-critical)"
+fi
+
+# 3. Verificar visao_consolidada.sh
+_VISAO_SCRIPT="${SKILL_DEST}/scripts/visao_consolidada.sh"
+if [[ -f "$_VISAO_SCRIPT" ]]; then
+    _VISAO_OUT=$(bash "$_VISAO_SCRIPT" 2>&1 | head -5 || true)
+    [[ -n "$_VISAO_OUT" ]] && \
+        _smoke_check "visao_consolidada.sh executou" "OK" || \
+        _smoke_check "visao_consolidada.sh" "sem saída — verifique OMIE_APP_KEY"
+else
+    _smoke_check "visao_consolidada.sh" "script não encontrado (non-critical)"
+fi
+
+# 4. Verificar gateway ativo
+if curl -fs http://127.0.0.1:18789/__openclaw__/canvas/ >/dev/null 2>&1 || \
+   ss -tlnp 2>/dev/null | grep -q ':18789'; then
+    _smoke_check "OpenClaw Gateway ativo (porta 18789)" "OK"
+else
+    _smoke_check "OpenClaw Gateway" "não encontrado na porta 18789"
+fi
+
+# 5. Verificar AGENTS.md PhD aplicado
+if [[ -f "${HOME}/.openclaw/workspace/AGENTS.md" ]] && \
+   grep -qiE 'Marcos|CFO|PhD|Planejador|Conciliação' "${HOME}/.openclaw/workspace/AGENTS.md" 2>/dev/null; then
+    _smoke_check "AGENTS.md PhD aplicado" "OK"
+else
+    _smoke_check "AGENTS.md PhD" "não aplicado ou incompleto"
+fi
+
+echo ""
+if [[ $_SMOKE_FAIL -eq 0 ]]; then
+    echo -e "${GREEN}✅ Smoke pós-instalação: TUDO OK (${_SMOKE_PASS}/${_SMOKE_PASS} checks)${NC}"
+else
+    echo -e "${YELLOW}⚠️  Smoke pós-instalação: ${_SMOKE_PASS} OK / ${_SMOKE_FAIL} falha(s) — veja acima${NC}"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

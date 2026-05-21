@@ -9,3 +9,4 @@ tokens.json
 .playwright-mcp/
 .firecrawl/
 __pycache__/
+install/REMIX_URL.txt
