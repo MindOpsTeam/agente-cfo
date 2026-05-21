@@ -391,46 +391,52 @@ ok "Exec approvals allowlist configurada para scripts CFO."
 _WS_ROOT="${HOME}/.openclaw/workspace"
 mkdir -p "$_WS_ROOT"
 
-# Não sobrescreve se já existir (idempotente)
-if [[ ! -f "${_WS_ROOT}/AGENTS.md" ]]; then
-    cat > "${_WS_ROOT}/AGENTS.md" << 'AGENTS_EOF'
-# AGENTS.md — Workspace do Agente CFO
+# PHD-1: Aplica template AGENTS.md PhD se template existir no repo OU cria o bootstrap básico
+# Template prioridade: install/templates/AGENTS.md (do monorepo, via git pull/clone)
+_AGENTS_TEMPLATE="${HOME}/.openclaw/workspace/skills/agente-cfo/../../../install/templates/AGENTS.md"
+# Caminho mais provável quando skill foi clonada de $SKILL_REPO
+_AGENTS_TEMPLATE_REPO="/tmp/agente-cfo-agents-template/install/templates/AGENTS.md"
 
-Este workspace pertence ao Marcos, CFO virtual.
+_apply_agents_template() {
+    local tmpl="$1"
+    if [[ -f "$tmpl" ]]; then
+        cp "$tmpl" "${_WS_ROOT}/AGENTS.md"
+        ok "AGENTS.md PhD aplicado de template: $tmpl"
+        return 0
+    fi
+    return 1
+}
 
-## Sessão
+if [[ ! -f "${_WS_ROOT}/AGENTS.md" ]] || grep -q "Workspace do Agente CFO" "${_WS_ROOT}/AGENTS.md" 2>/dev/null; then
+    # Tenta aplicar template PhD do repo clonado
+    _APPLIED=0
+    for _tmpl in \
+        "${SKILL_DEST}/../install/templates/AGENTS.md" \
+        "${HOME}/.openclaw/workspace/install/templates/AGENTS.md" \
+        "/tmp/agente-cfo-clone/install/templates/AGENTS.md"; do
+        if _apply_agents_template "$_tmpl" 2>/dev/null; then _APPLIED=1; break; fi
+    done
 
-Antes de qualquer ação:
-1. Leia `SOUL.md` — quem você é
-2. Leia `skills/agente-cfo/identity/identity.md` — identidade detalhada
-3. Leia `skills/agente-cfo/identity/soul.md` — guardrails
-4. Para runs cross-channel: siga `skills/agente-cfo/prompts/conversa.md`
+    if [[ $_APPLIED -eq 0 ]]; then
+        # Fallback: clone rápido apenas do template
+        _TMPL_CLONE=$(mktemp -d /tmp/agente-cfo-tmpl-XXXXX)
+        git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_CLONE" 2>/dev/null && \
+            (cd "$_TMPL_CLONE" && git sparse-checkout set "install/templates") && \
+            [[ -f "$_TMPL_CLONE/install/templates/AGENTS.md" ]] && \
+            _apply_agents_template "$_TMPL_CLONE/install/templates/AGENTS.md" && _APPLIED=1
+        rm -rf "$_TMPL_CLONE" 2>/dev/null || true
+    fi
 
-## Tools disponíveis
+    if [[ $_APPLIED -eq 0 ]]; then
+        # Último fallback: AGENTS.md básico (será substituído pelo template pós-instalação)
+        cat > "${_WS_ROOT}/AGENTS.md" << 'AGENTS_EOF'
+# AGENTS.md — Marcos, CFO Virtual
 
-- `exec` / `bash` — chamada de scripts shell e Python
-- `read`, `write`, `edit` — leitura e edição de arquivos
-- MCP servers: ver `mcp.servers` em openclaw.json
-
-## Workspace
-
-```
-skills/
-  agente-cfo/     — skill principal (prompts, scripts, identidade)
-  omie/           — ERP Omie (mcp_server.py + omie_client.py)
-  [erp escolhido] — ERP ativo (bling/contaazul/granatum/etc)
-  [crm escolhido] — CRM ativo (hubspot/pipedrive/kommo/etc)
-  evolution-api/  — canal WhatsApp via Evolution API
-  telegram/       — canal Telegram
-```
-
-## Red Lines
-
-- Nunca executar write sem confirmação explícita do dono (SIM/NÃO).
-- Nunca inventar números — dado indisponível = "dado indisponível".
-- Nunca exfiltrar dados privados.
+Você é Marcos, CFO sênior e estrategista financeiro.
+Leia skills/agente-cfo/identity/identity.md, soul.md e prompts/conversa.md.
 AGENTS_EOF
-    ok "AGENTS.md criado em ${_WS_ROOT}."
+        warn "AGENTS.md básico criado (template PhD será aplicado após instalação completa)."
+    fi
 fi
 
 if [[ ! -f "${_WS_ROOT}/SOUL.md" ]]; then
@@ -1110,6 +1116,44 @@ openclaw agents set-identity --agent main --from-identity \
     --workspace "$_WS_ROOT" 2>/dev/null || \
     warn "agents set-identity: falhou (non-critical)."
 ok "Workspace bootstrap do agent main populado (COMPAT-1)."
+
+# PHD-1: Aplicar template AGENTS.md PhD (agora que agente-cfo está instalada com o template)
+_WS_ROOT="${HOME}/.openclaw/workspace"
+_AGENTS_PHD="${SKILL_DEST}/../../install/templates/AGENTS.md"
+# Tenta a partir do repo clonado em SKILL_DEST (estrutura: workspace/skills/agente-cfo)
+# O template está em workspace/skills/agente-cfo/../../../install/templates → não existe
+# Mas o clone temporário guardou no /tmp durante _install_skill_from_repo
+# Por isso fazemos clone mínimo só do template
+_TMPL_SRC=$(mktemp -d /tmp/cfo-agents-phd-XXXXX)
+if git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_SRC" 2>/dev/null; then
+    (cd "$_TMPL_SRC" && git sparse-checkout set "install/templates" 2>/dev/null)
+    if [[ -f "$_TMPL_SRC/install/templates/AGENTS.md" ]]; then
+        cp "$_TMPL_SRC/install/templates/AGENTS.md" "${_WS_ROOT}/AGENTS.md"
+        ok "AGENTS.md PhD aplicado (Sprint PHD-1)."
+    fi
+fi
+rm -rf "$_TMPL_SRC" 2>/dev/null || true
+
+# PHD-1: Instalar 7 skills CFO especializadas
+step "11b/13 — Skills CFO especializadas (PHD-1)"
+_CFO_SKILLS=(
+    cfo-analise-estrategica
+    cfo-projecao
+    cfo-inadimplencia
+    cfo-anomalias
+    cfo-tributacao-br
+    cfo-cobranca-orquestrada
+    cfo-relatorios-executivos
+)
+for _skill in "${_CFO_SKILLS[@]}"; do
+    _install_skill_from_repo "$_skill" || warn "Skill ${_skill}: falhou ao instalar (não-crítico)."
+done
+ok "Skills CFO PhD instaladas: ${_CFO_SKILLS[*]}"
+
+# PHD-1: Criar diretório de memória financeira
+mkdir -p "${HOME}/.agente-cfo/memory"
+chmod 700 "${HOME}/.agente-cfo/memory"
+ok "Diretório de memória financeira criado."
 
 # Agora que agente-cfo está instalada, podemos iniciar o wacli-inbound (bug 2 fix)
 # O script wacli_inbound.py precisa existir antes de o service subir.
