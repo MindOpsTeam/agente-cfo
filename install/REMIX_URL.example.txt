@@ -1,0 +1,29 @@
+# REMIX_URL.example.txt
+# Instruções para o PM atualizar a URL de Remix do Lovable no projeto.
+#
+# QUANDO USAR:
+#   Quando o PM marcar o projeto Lovable como público e remixável,
+#   copie a URL de Remix gerada pelo Lovable e siga os passos abaixo.
+#
+# PASSO A PASSO:
+#
+# 1. Abra o projeto no Lovable (lovable.dev)
+# 2. Clique em "Share" → "Enable Remix"
+# 3. Copie a URL gerada (formato: https://lovable.dev/projects/<id>/remix)
+#
+# 4. Crie o arquivo de configuração:
+#      echo "REMIX_URL=https://lovable.dev/projects/SEU-ID-AQUI/remix" > install/REMIX_URL.txt
+#
+# 5. Execute o script de atualização:
+#      bash install/update-remix-url.sh
+#
+# O script atualiza automaticamente:
+#   - README.md           (botão CTA "Remixar no Lovable")
+#   - src/routes/install.tsx  (botão grande "Remixar")
+#   - docs/CLIENTE.md     (passo 1 da instalação)
+#
+# EXEMPLO:
+#   REMIX_URL=https://lovable.dev/projects/abc123-def456/remix
+#
+# NOTA: Não versionar REMIX_URL.txt (já está no .gitignore).
+# Este arquivo (.example.txt) pode ser versionado normalmente.
