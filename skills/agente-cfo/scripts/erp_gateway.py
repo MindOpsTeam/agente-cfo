@@ -20,6 +20,11 @@ Comandos suportados (via BaseERPClient):
   cancel_payable   --id ID
   update_category  --id ID --category C [--record_type payable|receivable]
 
+  snapshot_kpis    — agrega KPIs do ERP num único JSON (para dashboard-snapshot)
+    Output: {"balance": N, "payables_30d": N, "receivables_30d": N,
+             "overdue_total": N, "erp": "omie", "as_of": "<ISO>"}
+    Em caso de erro parcial: valores afetados ficam 0.0, campo "erp_error" presente.
+
 AUTO-FALLBACK (create_payable / create_receivable):
   Se o ERP retornar erro (qualquer {error:...} ou returncode != 0), o gateway:
     1. Chama panel_write_event.sh com erp="dashboard_only", status="success"
@@ -34,6 +39,7 @@ import os
 import sys
 import subprocess
 import json
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import sys as _sys
 _sys.path.insert(0, str(Path(__file__).parent))
@@ -42,6 +48,7 @@ from credential_error import wrap_subprocess_result  # noqa: E402
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 WRITE_COMMANDS = {"create_payable", "create_receivable"}
+AGGREGATE_COMMANDS = {"snapshot_kpis"}
 WRITE_EVENT_SCRIPT = Path(__file__).parent / "panel_write_event.sh"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -138,6 +145,111 @@ def extract_erp_error(raw_stdout: str, returncode: int) -> str:
     if returncode != 0:
         return f"ERP returncode={returncode}"
     return ""
+
+
+# ── snapshot_kpis ─────────────────────────────────────────────────────────────
+
+def _run_client(client_script: str, subcommand: str, extra_args: list) -> dict:
+    """Executa um subcommand do ERP client e retorna dict JSON ou {"error": ...}."""
+    result = subprocess.run(
+        ["python3", client_script, subcommand] + extra_args,
+        capture_output=True, text=True, timeout=30,
+    )
+    raw = result.stdout.strip()
+    if not raw:
+        return {"error": f"{subcommand}: saída vazia (rc={result.returncode})"}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"error": f"{subcommand}: JSON inválido: {raw[:120]}"}
+
+
+def _sum_amounts(data) -> float:  # dict | list — Python 3.9 compat
+    """Soma o campo de valor de uma lista de registros retornada pelo ERP client."""
+    items: list = []
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        for key in ("items", "payables", "receivables", "lancamentos", "titulos", "data", "records"):
+            if key in data and isinstance(data[key], list):
+                items = data[key]
+                break
+        # Resposta já é o total direto (get_balance-style)
+        if not items:
+            for key in ("balance", "total", "amount", "value", "saldo"):
+                if key in data:
+                    try:
+                        return float(data[key])
+                    except (TypeError, ValueError):
+                        pass
+
+    total = 0.0
+    for item in items:
+        for key in ("nValorTitulo", "nValorLancamento", "valor", "amount",
+                    "value", "nValor", "nSaldo", "total"):
+            if key in item:
+                try:
+                    total += float(item[key])
+                    break
+                except (TypeError, ValueError):
+                    pass
+    return total
+
+
+def cmd_snapshot_kpis(erp_name: str, client_script: str) -> dict:
+    """
+    Agrega balance + payables_30d + receivables_30d + overdue_total num único JSON.
+    Falhas parciais resultam em 0.0 para o campo afetado + erp_error no output.
+    Exit 0 sempre (dashboard-snapshot não deve falhar por ERP indisponível).
+    """
+    today = datetime.now(timezone.utc).date()
+    in_30d = (today + timedelta(days=30)).isoformat()
+    today_iso = today.isoformat()
+
+    result: dict = {
+        "balance": 0.0,
+        "payables_30d": 0.0,
+        "receivables_30d": 0.0,
+        "overdue_total": 0.0,
+        "erp": erp_name,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    errors: list[str] = []
+
+    # 1. Balance
+    bal_data = _run_client(client_script, "get_balance", [])
+    if "error" in bal_data:
+        errors.append(f"get_balance: {bal_data['error']}")
+    else:
+        result["balance"] = _sum_amounts(bal_data)
+
+    # 2. Payables (próximos 30 dias)
+    pay_data = _run_client(client_script, "list_payables",
+                           ["--from", today_iso, "--to", in_30d, "--limit", "200"])
+    if "error" in pay_data:
+        errors.append(f"list_payables: {pay_data['error']}")
+    else:
+        result["payables_30d"] = _sum_amounts(pay_data)
+
+    # 3. Receivables (próximos 30 dias)
+    rec_data = _run_client(client_script, "list_receivables",
+                           ["--from", today_iso, "--to", in_30d, "--limit", "200"])
+    if "error" in rec_data:
+        errors.append(f"list_receivables: {rec_data['error']}")
+    else:
+        result["receivables_30d"] = _sum_amounts(rec_data)
+
+    # 4. Overdue total
+    ovd_data = _run_client(client_script, "list_overdue", [])
+    if "error" in ovd_data:
+        errors.append(f"list_overdue: {ovd_data['error']}")
+    else:
+        result["overdue_total"] = _sum_amounts(ovd_data)
+
+    if errors:
+        result["erp_error"] = "; ".join(errors)
+
+    return result
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
@@ -242,6 +354,23 @@ def main():
             }
             print(json.dumps(output))
             sys.exit(0)   # ← sempre 0: Marcos não precisa de recovery turn
+
+    # ── snapshot_kpis: agregação de KPIs para dashboard-snapshot ─────────────
+    if command in AGGREGATE_COMMANDS:
+        kpis = cmd_snapshot_kpis(erp_name, client_script)
+        # credential check: se o ERP retornou credential_invalid, propaga
+        if kpis.get("erp_error"):
+            # Tenta detectar erro de credencial no erp_error para propagar via wrap
+            # (erp_error pode conter "credential_invalid" se o client usou wrap_subprocess_result)
+            err_lower = kpis["erp_error"].lower()
+            if any(k in err_lower for k in ("credential", "unauthorized", "401", "403", "invalid_key")):
+                kpis["error_kind"] = "credential_invalid"
+                kpis["message_pt"] = (
+                    f"Credenciais do {erp_name} inválidas ou expiradas. "
+                    "Configure as credenciais no painel e tente novamente."
+                )
+        print(json.dumps(kpis, ensure_ascii=False))
+        sys.exit(0)  # sempre 0: dashboard não deve quebrar por ERP indisponível
 
     # ── Todos os outros comandos: proxy simples (com credential check) ────────
     result = subprocess.run(
