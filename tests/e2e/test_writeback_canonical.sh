@@ -162,6 +162,94 @@ grep -q 'toolsProfile' "$SKILL_MD" && \
   check "docs/OPENCLAW-2026.5.18-COMPAT.md existe" "FAIL"
 
 echo ""
+echo "--- FIX-FALLBACK: erp_gateway auto-fallback atômico ---"
+ERP_GW="$REPO_DIR/skills/agente-cfo/scripts/erp_gateway.py"
+[[ -f "$ERP_GW" ]] && check "erp_gateway.py existe" "OK" || check "erp_gateway.py existe" "FAIL"
+python3 -c "import ast; ast.parse(open('$ERP_GW').read())" 2>/dev/null && \
+  check "erp_gateway.py sintaxe Python OK" "OK" || check "erp_gateway.py sintaxe Python OK" "FAIL"
+grep -q 'dashboard_only' "$ERP_GW" && \
+  check "erp_gateway.py contém lógica fallback dashboard_only" "OK" || \
+  check "erp_gateway.py contém lógica fallback dashboard_only" "FAIL"
+grep -q 'WRITE_COMMANDS\|create_payable.*create_receivable\|WRITE_COMMANDS.*create' "$ERP_GW" && \
+  check "erp_gateway.py define WRITE_COMMANDS" "OK" || \
+  check "erp_gateway.py define WRITE_COMMANDS" "FAIL"
+grep -q 'sys.exit(0).*always 0\|always 0\|não precisa.*recovery\|Marcos não precisa' "$ERP_GW" && \
+  check "erp_gateway.py documenta exit 0 atômico" "OK" || \
+  check "erp_gateway.py documenta exit 0 atômico" "FAIL"
+
+# Teste funcional: ERP error → fallback dashboard_only (sem painel real)
+FALLBACK_RESULT=$(python3 - "$ERP_GW" "$REPO_DIR" << 'PYEOF'
+import subprocess, json, os, sys, shutil, tempfile
+from pathlib import Path
+
+erp_gw = sys.argv[1]
+repo_dir = sys.argv[2]
+
+# Cria skill stub que retorna erro ERP
+stub_skill = Path.home() / ".openclaw" / "workspace" / "skills" / "_smoke_stub_err"
+(stub_skill / "scripts").mkdir(parents=True, exist_ok=True)
+(stub_skill / "scripts" / "_smoke_stub_err_client.py").write_text(
+    'import json,sys\nprint(json.dumps({"error":"HTTP 404","faultstring":"not found"}))\nsys.exit(0)\n'
+)
+env = {**os.environ, "CFO_ERP_NAME": "_smoke_stub_err", "PANEL_BASE_URL": "", "PANEL_TOKEN": ""}
+r = subprocess.run(
+    ["python3", erp_gw, "create_payable",
+     "--amount", "50", "--supplier", "Uber", "--due_date", "2026-05-20",
+     "--thread_id", "t1", "--run_id", "r1", "--channel", "whatsapp:x"],
+    capture_output=True, text=True, env=env,
+)
+shutil.rmtree(str(stub_skill), ignore_errors=True)
+rc = r.returncode
+try:
+    d = json.loads(r.stdout)
+    ok = rc == 0 and d.get("success") is True and d.get("fallback") == "dashboard_only"
+    print("PASS" if ok else f"FAIL rc={rc} json={d}")
+except Exception as e:
+    print(f"FAIL rc={rc} parse_err={e} stdout={r.stdout[:200]}")
+PYEOF
+)
+[[ "$FALLBACK_RESULT" == "PASS" ]] && \
+  check "ERP error → fallback=dashboard_only, exit 0 (smoke)" "OK" || \
+  check "ERP error → fallback=dashboard_only, exit 0 (smoke)" "FAIL — $FALLBACK_RESULT"
+
+# Teste funcional: ERP success → fallback null
+SUCCESS_RESULT=$(python3 - "$ERP_GW" << 'PYEOF'
+import subprocess, json, os, sys, shutil
+from pathlib import Path
+
+erp_gw = sys.argv[1]
+stub_skill = Path.home() / ".openclaw" / "workspace" / "skills" / "_smoke_stub_ok2"
+(stub_skill / "scripts").mkdir(parents=True, exist_ok=True)
+(stub_skill / "scripts" / "_smoke_stub_ok2_client.py").write_text(
+    'import json,sys\nprint(json.dumps({"success":True,"id":"42","record_id":"42"}))\nsys.exit(0)\n'
+)
+env = {**os.environ, "CFO_ERP_NAME": "_smoke_stub_ok2", "PANEL_BASE_URL": "", "PANEL_TOKEN": ""}
+r = subprocess.run(
+    ["python3", erp_gw, "create_payable",
+     "--amount", "200", "--supplier", "Aluguel", "--due_date", "2026-06-01",
+     "--thread_id", "t2", "--run_id", "r2", "--channel", "whatsapp:x"],
+    capture_output=True, text=True, env=env,
+)
+shutil.rmtree(str(stub_skill), ignore_errors=True)
+rc = r.returncode
+try:
+    d = json.loads(r.stdout)
+    ok = rc == 0 and d.get("success") is True and d.get("fallback") is None and d.get("erp_record_id") == "42"
+    print("PASS" if ok else f"FAIL rc={rc} json={d}")
+except Exception as e:
+    print(f"FAIL rc={rc} parse={e} stdout={r.stdout[:200]}")
+PYEOF
+)
+[[ "$SUCCESS_RESULT" == "PASS" ]] && \
+  check "ERP success → fallback=null, erp_record_id OK (smoke)" "OK" || \
+  check "ERP success → fallback=null, erp_record_id OK (smoke)" "FAIL — $SUCCESS_RESULT"
+
+grep -q 'dashboard_only\|fallback\|ATÔMICO\|atômico' \
+  "$REPO_DIR/skills/agente-cfo/prompts/conversa.md" && \
+  check "conversa.md documenta contrato atômico" "OK" || \
+  check "conversa.md documenta contrato atômico" "FAIL"
+
+echo ""
 echo "================================="
 echo "RESULTADO: $PASS PASS / $FAIL FAIL"
 echo "================================="

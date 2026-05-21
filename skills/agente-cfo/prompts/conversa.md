@@ -214,9 +214,40 @@ A conversa PARA aqui. Quando o dono responder:
 
 Timeout: se o dono nao responder em 5 minutos (verifique `last_ts` no thread), cancele silenciosamente no proximo inbound e informe: "A confirmacao da operacao anterior expirou. Me avise se ainda quiser fazer."
 
-### Etapa 5 — Execute e confirme
+### Etapa 5 — Execute (atômico para create_payable / create_receivable)
 
-Apos confirmacao:
+#### create_payable / create_receivable — ATÔMICO (sempre exit 0)
+
+```bash
+RESULT=$(python3 $SCRIPTS_DIR/erp_gateway.py create_payable \
+  --amount <valor> --supplier <fornecedor> --due_date <YYYY-MM-DD> \
+  --category <categoria> \
+  --thread_id "${THREAD_ID}" --run_id "${RUN_ID}" --channel "${CHANNEL}")
+```
+
+O gateway é **atômico**: retorna `exit 0` em qualquer cenário. Avalie o JSON:
+
+```
+success:true, fallback:null   → ERP registrou. Use erp_record_id na confirmação.
+success:true, fallback:"dashboard_only" → ERP falhou mas painel foi populado.
+                                          Use panel_id na confirmação.
+```
+
+**Confirmação ao dono:**
+
+```
+# ERP success:
+"✅ Lançado R$X em <ERP> (id=<erp_record_id>), categoria <Z>."
+
+# fallback dashboard_only:
+"✅ Lançado R$X no painel (id=<panel_id>). <ERP> indisponível: <erp_error truncado>.
+ Lançamento salvo no histórico do painel — sincronize manualmente quando o ERP voltar."
+```
+
+**NÃO chamar panel_write_event.sh** após create_payable/create_receivable — o gateway já chamou internamente. Só chamar manualmente para `pay_payable`, `mark_received`, `cancel_payable`.
+
+#### pay_payable / mark_received / cancel_payable — proxy simples
+
 ```bash
 python3 $SCRIPTS_DIR/erp_gateway.py pay_payable --id <id>
 ```
@@ -224,8 +255,8 @@ python3 $SCRIPTS_DIR/erp_gateway.py pay_payable --id <id>
 Confirme sucesso:
 > "Pago. [Fornecedor]: R$ 480,00. Registrado no [ERP]. ID: [id]."
 
-Se falhar:
-> "Erro ao registrar no [ERP]: [mensagem]. Nao foi alterado nada. Tente novamente ou faca manualmente."
+Se falhar (exit != 0 ou JSON com `error`):
+> "Erro ao registrar no [ERP]: [mensagem]. Nada foi alterado. Tente novamente ou faça manualmente."
 
 ### Etapa 5b — Verifica dedup antes de confirmar
 Após chamar `panel_write_event.sh`, verifique o stdout:
