@@ -1,214 +1,187 @@
-# Guia do Dono — Agente CFO
+# Guia do Cliente — Agente CFO (Marcos)
 
-**Marcos** é seu CFO virtual. Ele vive na sua VPS e responde no WhatsApp, Telegram e no chat web com dados reais do seu negócio — 24/7, sem você abrir planilha.
-
----
-
-## 1. Onboarding (primeira vez)
-
-### Pré-requisitos
-
-| O que precisa | Onde conseguir |
-|---------------|----------------|
-| VPS Linux (Ubuntu 22.04+, 1 vCPU / 1 GB RAM) | DigitalOcean, Hetzner, Hostinger — ~R$30–80/mês |
-| Conta Anthropic + API Key | [console.anthropic.com](https://console.anthropic.com) — ~R$30–80/mês de uso |
-| ERP com API ativa | Omie, Bling, Tiny, Granatum, VHSYS, Nibo ou ContaAzul |
-| Número WhatsApp dedicado (opcional) | Chip novo recomendado — não o seu número pessoal |
-
-### Passos
-
-1. **Crie conta no painel** em [carteira-do-agente.lovable.app](https://carteira-do-agente.lovable.app)
-2. Siga o onboarding guiado (8 etapas no browser)
-3. Cole o comando gerado na sua VPS — instala tudo em ~5 minutos
-4. Escaneie o QR code para conectar o WhatsApp (ou configure Telegram)
-5. Pronto — Marcos já está trabalhando
+> **Versão:** Sprint LAUNCH-1 · 2026-05-21  
+> **Tempo de leitura:** ~5 minutos  
+> **Tempo de instalação:** ~15 minutos
 
 ---
 
-## 2. Conectar integrações via painel
+## 1. O que é Marcos
 
-**Painel → Configurações → Integrações**
+**Marcos** é um CFO virtual 24/7 que responde no seu WhatsApp, Telegram e painel web com dados reais do seu negócio. Ele consulta seu ERP, CRM e plataforma de cobrança, lança despesas, analisa inadimplência, projeta fluxo de caixa e sugere ações concretas — tudo sem você abrir planilha ou dashboard.
 
-Nenhuma chave precisa ir pra VPS manualmente. Você cola no painel, o daemon `cfo-credentials-sync` materializa na VPS em até 3 minutos.
-
-### ERPs suportados
-
-| ERP | O que Marcos consulta |
-|-----|----------------------|
-| Omie | Saldo, contas a pagar/receber, clientes, pedidos, NF-e, fluxo de caixa |
-| Bling | Saldo, contas, pedidos, produtos, estoque |
-| Tiny | Pedidos, NF-e, produtos, clientes |
-| Granatum | Lançamentos, categorias, saldo |
-| VHSYS | Clientes, produtos, pedidos, financeiro |
-| Nibo | Contas a pagar/receber, categorias, saldo |
-| ContaAzul | Clientes, produtos, pedidos, contas |
-
-### CRMs suportados
-
-| CRM | O que Marcos consulta |
-|-----|----------------------|
-| HubSpot | Deals, contatos, empresas, tickets, atividades |
-| RD Station | Contatos, leads, oportunidades, funil |
-| PipeRun | Deals, pipeline, atividades |
-| Pipedrive | Deals, leads, pessoas, organizações |
-| Kommo (amoCRM) | Leads, contatos, tarefas, pipelines |
-
-### Cobrança
-
-| Sistema | O que Marcos faz |
-|---------|-----------------|
-| Asaas | Cria cobranças (boleto/Pix/cartão), lista inadimplentes, envia lembretes |
-| Iugu | Faturas, assinaturas, extrato |
+É como ter um CFO sênior disponível a qualquer hora, que conhece seu negócio de cor e diz o que você precisa ouvir, não o que você quer.
 
 ---
 
-## 3. Configurar canais de mensagem
+## 2. Por que é diferente
 
-### WhatsApp (via Evolution API)
-
-**Painel → Configurações → WhatsApp**
-
-1. Informe URL e API key da sua instância Evolution
-2. Clique "Adicionar instância"
-3. QR code aparece no painel — escaneie com o celular
-4. Status vira `connected` em segundos
-
-Você pode ter múltiplas instâncias (ex: `vendas`, `suporte`, `dono`).
-
-### Telegram
-
-**Painel → Configurações → Telegram**
-
-1. Fale com [@BotFather](https://t.me/BotFather) no Telegram → `/newbot`
-2. Cole o token no painel
-3. Em 30s o daemon registra o webhook automaticamente
-4. Envie `/start` para o bot — Marcos responde
-
-### Chat web
-
-Disponível em qualquer dispositivo via painel. Mesmo Marcos, mesmo histórico.
+| Característica | Marcos | Ferramentas tradicionais |
+|----------------|--------|--------------------------|
+| **Onde roda** | Na sua VPS (você é dono) | Na nuvem deles |
+| **Seus dados** | Ficam na sua infra | Ficam nos servidores deles |
+| **Custo** | ~R$60–110/mês (infraestrutura) | R$200–800/mês (SaaS) |
+| **Código** | Open-source (MIT) | Caixa-preta |
+| **Canal** | WhatsApp / Telegram / Web | Só dashboard |
+| **Inteligência** | Proativo — alerta sem você pedir | Só mostra dados quando você abre |
 
 ---
 
-## 4. Criar automações
+## 3. Pré-requisitos
 
-**Painel → Automações → Nova Automação**
+Você precisa de **4 coisas** antes de começar:
 
-Ou via chat:
+### 3a. Conta Anthropic (obrigatório)
 
-```
-"Marcos, cria uma automação pra me mandar o faturamento toda segunda às 9h"
-"Marcos, me avisa sempre que o caixa ficar abaixo de R$ 20.000"
-```
+Marcos usa o modelo Claude Sonnet da Anthropic para pensar.
 
-Tipos de gatilho disponíveis:
-- **Cron**: horário específico ("toda segunda às 09:00")
-- **Métrica**: quando KPI cruza threshold ("caixa < R$50k")
-- **Manual**: botão no painel ou mensagem para Marcos
+1. Acesse [console.anthropic.com](https://console.anthropic.com)
+2. Crie conta e adicione créditos (~R$50 pra começar, dura semanas em uso normal)
+3. Crie uma API key (`sk-ant-api03-...`)
+4. Guarde essa chave — você vai colar no onboarding
 
-Ações que precisam de confirmação (Marcos pede "SIM" antes de executar):
-- Enviar cobrança para cliente
-- Criar fatura no ERP
-- Atualizar deal no CRM
+**Custo estimado:** R$30–80/mês dependendo de quantas mensagens o Marcos recebe.
 
----
+### 3b. VPS Linux (obrigatório)
 
-## 5. Definir alertas
+Uma máquina virtual onde o Marcos vai rodar. Não precisa de servidor caro — o básico funciona.
 
-**Painel → Configurações → Alertas**
+**Requisitos mínimos:** Ubuntu 22.04+, 1 vCPU, 1 GB RAM, 20 GB disco
 
-| Tipo | Exemplo |
-|------|---------|
-| Taxa de erro | "Me avisa se o daemon de automações falhar mais de 50% dos ciclos" |
-| Daemon caiu | "Me avisa se o gateway do OpenClaw cair" |
-| Budget Anthropic | "Me avisa se o custo passar de R$ 100/dia" |
-| Latência alta | "Me avisa se Marcos demorar mais de 60s consistentemente" |
+**Provedores recomendados:**
 
-Canais de notificação: WhatsApp, Telegram, painel. Cooldown configurável (evita spam).
+| Provedor | Plano recomendado | Preço | Link |
+|----------|------------------|-------|------|
+| **Hetzner** (melhor custo-benefício) | CX22 (2 vCPU / 4 GB) | €4,35/mês | [hetzner.com/cloud](https://hetzner.com/cloud) |
+| **DigitalOcean** (mais conhecido) | Droplet Basic 2 GB | $12/mês | [digitalocean.com](https://digitalocean.com) |
+| **Hostinger** (opção BR) | VPS 1 (1 vCPU / 1 GB) | R$24/mês | [hostinger.com.br/vps](https://hostinger.com.br/vps) |
 
----
+> Pode usar AWS, GCP, OVH, Linode — qualquer VPS Ubuntu funciona. Hetzner é a mais barata e confiável para PMEs.
 
-## 6. Controlar via painel (sem SSH)
+### 3c. WhatsApp (opcional para começar)
 
-**Painel → Configurações → Sistema**
+Um número WhatsApp que o Marcos vai usar para se comunicar com você. **Recomendado: chip dedicado** (não use seu número pessoal para evitar risco de banimento).
 
-Através do Marcos ou da UI, você pode:
+Você pode começar usando só o chat web e adicionar WhatsApp depois.
 
-```
-"Marcos, reinicia o serviço cfo-automation-engine"
-"Marcos, mostra os últimos 30 logs do cfo-evolution-sync"
-"Marcos, qual o status do OpenClaw?"
-"Marcos, instala o plugin X"
-"Marcos, atualiza todas as skills"
-```
+### 3d. ERP com API ativa (opcional para começar)
 
-Ações disponíveis: restart/start/stop de serviços, logs, config get/set, plugins, MCP servers, self-update. Ver [docs/admin-actions.md](admin-actions.md) para lista completa.
+Marcos funciona sem ERP no início — você pode testar pelo chat. Para dados reais, configure depois:
+
+**Suportados:** Omie · Bling · Tiny · Granatum · VHSYS · Nibo · ContaAzul  
+**Recomendado para começar:** Omie (gratuito, API mais completa)
 
 ---
 
-## 7. Backup e restore
+## 4. Instalação passo a passo (~15 minutos)
 
-### Backup automático
+### Etapa 1 — Remixar o template no Lovable (2 min)
 
-Roda todo dia às 03:00 e salva em `~/.agente-cfo/backups/`. Mantém 7 versões.
+1. Acesse o template público do Agente CFO no Lovable
+2. Clique em **"Remix"**
+3. Crie sua conta Lovable (email + OTP, grátis)
+4. O Lovable cria automaticamente:
+   - Seu painel web próprio (URL: `seu-projeto.lovable.app`)
+   - Banco de dados Supabase próprio
+   - Todas as edge functions necessárias
 
-### Backup manual
+### Etapa 2 — Criar conta no painel (1 min)
+
+1. Acesse `seu-projeto.lovable.app`
+2. Clique em **"Criar conta"**
+3. Email + OTP — sem senha para lembrar
+
+### Etapa 3 — Wizard de onboarding (5 min)
+
+O wizard te guia por 4 passos:
+
+1. **Anthropic** — cole sua API key (`sk-ant-...`). O wizard valida em tempo real.
+2. **ERP** — escolha seu ERP e cole as credenciais (ou pule por agora)
+3. **WhatsApp** — informe o número que vai usar (ou pule)
+4. **Revisão** — confirme e clique em **"Gerar comando de instalação"**
+
+O wizard gera **um comando único** com tudo configurado. Copie ele.
+
+### Etapa 4 — Instalar na VPS (5 min)
+
+1. Acesse sua VPS via SSH:
+   ```bash
+   ssh root@IP_DA_SUA_VPS
+   ```
+
+2. Cole o comando gerado pelo wizard (ele começa com `curl -fsSL ...`):
+   ```bash
+   # Exemplo — o seu vai ter suas credenciais embutidas:
+   curl -fsSL "https://seu-projeto.supabase.co/functions/v1/setup-installer?token=XXXXX" | bash
+   ```
+
+3. Aguarde ~5 minutos. O script instala tudo automaticamente:
+   - OpenClaw (orquestrador de agentes)
+   - Marcos (agente CFO com todas as skills)
+   - 9 daemons de background
+   - Tunnel Cloudflare (acesso externo)
+   - MCPs das suas integrações
+
+4. No final aparece:
+   ```
+   ╔══════════════════════════════════════════════════╗
+   ║              Instalação Concluída!               ║
+   ╚══════════════════════════════════════════════════╝
+   Marcos está online.
+   ```
+
+5. **Se configurou WhatsApp:** abra `http://[URL-DO-PAINEL]/settings/whatsapp` e escaneie o QR code
+
+### Pronto!
+
+Abra o chat no painel ou mande mensagem no WhatsApp:
+> "Marcos, tudo bem?"
+
+Ele responde.
+
+---
+
+## 5. Custos mensais estimados
+
+| Item | Faixa de custo |
+|------|---------------|
+| VPS (Hetzner CX22) | €4,35/mês (~R$26) |
+| Anthropic API — uso leve (30–50 msgs/dia) | ~R$30–50 |
+| Anthropic API — uso moderado (100–200 msgs/dia) | ~R$50–120 |
+| Lovable (free tier — até 5 projetos) | Grátis |
+| **Total estimado** | **~R$60–150/mês** |
+
+> **Dica:** Configure `LLM_BUDGET_BRL` no onboarding para limitar o gasto mensal com Anthropic automaticamente.
+
+---
+
+## 6. Como pedir ajuda
+
+- **Documentação:** [docs/ neste repositório](https://github.com/MindOpsTeam/agente-cfo/tree/main/docs)
+- **FAQ:** [docs/FAQ.md](FAQ.md)
+- **Problemas:** [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+- **Comunidade:** [Viver de IA](https://viverdeia.ai)
+- **GitHub Issues:** [github.com/MindOpsTeam/agente-cfo/issues](https://github.com/MindOpsTeam/agente-cfo/issues)
+
+> ⚠️ **Sem suporte 1:1.** Este é um projeto open-source comunitário.
+
+---
+
+## 7. Privacidade e segurança
+
+- **Seus dados ficam na sua VPS e no seu banco Supabase** — ninguém mais tem acesso
+- A API key da Anthropic fica no arquivo `~/.agente-cfo/.env` da sua VPS (chmod 600)
+- Credenciais de ERP ficam no seu Supabase Vault (criptografadas)
+- O painel Lovable tem autenticação por email + OTP
+- Não existe servidor central nosso que recebe seus dados financeiros
+
+---
+
+## 8. Como atualizar Marcos
 
 ```bash
-# Via painel: Configurações → Sistema → "Baixar Backup"
-# Ou pede pro Marcos: "Marcos, faz um backup das minhas configurações"
+# Na sua VPS:
+bash ~/.openclaw/workspace/skills/agente-cfo/scripts/self_update.sh
 ```
 
-### Restore
-
-```bash
-# Com o arquivo tar.gz do backup:
-bash restore_config.sh ~/cfo-backup-YYYYMMDD.tar.gz --dry-run  # pré-visualiza
-bash restore_config.sh ~/cfo-backup-YYYYMMDD.tar.gz             # aplica
-```
-
-Ver [docs/backup-restore.md](backup-restore.md) para detalhes.
-
----
-
-## 8. Migrar para nova VPS
-
-```bash
-# 1. Na VPS atual — gera backup com tudo
-bash memory_export.sh --include-sessions --output ~/marcos-completo.tar.gz
-bash backup_config.sh --include-secrets --output ~/config-completo.tar.gz
-
-# 2. Transfere para nova VPS
-scp ~/marcos-completo.tar.gz ~/config-completo.tar.gz nova-vps:~/
-
-# 3. Na nova VPS — instala e restaura
-curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/setup.sh | bash
-bash restore_config.sh ~/config-completo.tar.gz
-bash memory_import.sh ~/marcos-completo.tar.gz --replace
-```
-
----
-
-## 9. Problemas comuns
-
-| Sintoma | Causa provável | Solução |
-|---------|---------------|---------|
-| Marcos não responde | Gateway offline | `systemctl restart openclaw-gateway` ou via painel |
-| QR code WhatsApp não aparece | Evolution sync falhou | Painel → Configurações → WhatsApp → "Forçar Sync" |
-| Integração ERP não funciona | Credentials sync atrasado | Aguarda 3min ou "Marcos, forçar sync de credenciais" |
-| Chat web deu erro 503 | VPS offline / tunnel caiu | Verifica `systemctl status cloudflared-cfo` |
-| Alerta não disparou | Cooldown ativo (30min padrão) | Aguarda cooldown ou ajusta no painel |
-
-Ver [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) para diagnóstico completo.
-
----
-
-## Para desenvolvedores
-
-| Recurso | Link |
-|---------|------|
-| Arquitetura técnica | [docs/ARCHITECTURE.md](ARCHITECTURE.md) |
-| Histórico de sprints | [docs/SPRINTS.md](SPRINTS.md) |
-| Protocolo WebSocket | [docs/openclaw-ws.md](openclaw-ws.md) |
-| Pipeline cross-channel | [docs/channels.md](channels.md) |
-| Observabilidade | [docs/metrics.md](metrics.md) |
+Ou via painel → Configurações → Sistema → "Atualizar Marcos".

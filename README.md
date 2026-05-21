@@ -1,135 +1,52 @@
-# Agente CFO
+# 🤖 Agente CFO — Marcos
 
-**Marcos**, seu CFO virtual brasileiro — responde via WhatsApp, Telegram e painel web com dados reais do seu ERP, CRM e cobrança. Sem planilha, sem dashboard, sem contratar pessoa.
+**CFO virtual 24/7 brasileiro — rode na sua infra em 15 minutos**
+
+[![Template gratuito](https://img.shields.io/badge/template-gratuito-brightgreen?logo=lovable)](https://lovable.dev)
+[![WhatsApp](https://img.shields.io/badge/WhatsApp-nativo-25D366?logo=whatsapp)](https://wa.me)
+[![Open Source](https://img.shields.io/badge/open--source-MIT-blue)](LICENSE)
+[![Brasil](https://img.shields.io/badge/feito_no-Brasil-009c3b)](https://github.com/MindOpsTeam/agente-cfo)
+
+---
+
+## Remixar no Lovable
+
+> **→ [Clique aqui para remixar o template e ter seu próprio Marcos](https://lovable.dev)**
 
 ---
 
 ## O que é
 
-- Conecta ERPs, CRMs, cobrança e e-commerce via **1.279 ferramentas MCP**
-- Marcos responde via **chat web, WhatsApp e Telegram** — mesmo contexto em todos os canais
-- **Plug-and-play**: configura tudo pelo painel, zero SSH após onboarding inicial
-- **Auto-recovery**: daemons se recuperam sozinhos quando algo falha
-- **Alertas configuráveis**: avisa quando daemon cai, custo ultrapassa budget, taxa de erro sobe
-- **Open-source** — você é dono da infra, dados ficam na sua VPS + Supabase
+**Marcos** é seu CFO virtual. Ele vive na sua VPS, responde via WhatsApp, Telegram e chat web com dados reais do seu ERP, CRM, cobrança e e-commerce — 24/7, sem você abrir planilha.
 
-## Para quem
+```
+Você (WA): "Quanto tenho a receber essa semana?"
+Marcos:    "R$ 12.400 em 3 clientes. Maior vencimento: Acme em 23/05 (R$ 8.200).
+            Risco: Acme tem histórico de atraso 🟡."
 
-PMEs brasileiras que querem um CFO 24/7 que entende contabilidade, cobrança, vendas e e-commerce — sem contratar pessoa física.
-
----
-
-## Quickstart (5 min)
-
-```bash
-# 1. Crie conta no painel
-# https://carteira-do-agente.lovable.app
-
-# 2. Cole na sua VPS (Ubuntu 22.04+)
-curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/setup.sh | bash
-
-# 3. Painel → /integrations → conecta ERP/CRM → pronto
+Você:      "Gastei R$150 com Uber"
+Marcos:    "Entendi — R$150 pago pra Uber, categoria Transporte, hoje.
+            Confirma? (SIM/NÃO)"
+Você:      "SIM"
+Marcos:    "✅ Lançado no Omie (id=4823)."
 ```
 
 ---
 
-## Como funciona
+## Como funciona (4 passos, ~15 min)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                          PAINEL WEB                             │
-│  (Supabase + React, Lovable Cloud)                              │
-│  /chat  /integrations  /automations  /settings  /alerts        │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ HTTPS / WebSocket
-         ┌───────────────────────▼────────────────────────┐
-         │                   VPS LINUX                    │
-         │                                                │
-         │  ┌─────────────────────────────────────────┐   │
-         │  │         OpenClaw Gateway                │   │
-         │  │   (agente Marcos · Claude Sonnet 4.6)   │   │
-         │  └──────────────────┬──────────────────────┘   │
-         │                     │ MCP stdio                 │
-         │  ┌──────────────────▼──────────────────────┐   │
-         │  │    17 MCP servers (1.279 tools)         │   │
-         │  │  Omie · Bling · HubSpot · Asaas · ...  │   │
-         │  └──────────────────┬──────────────────────┘   │
-         │                     │                           │
-         │  ┌──────────────────▼──────────────────────┐   │
-         │  │           Daemons CFO (14)               │   │
-         │  │  credentials-sync  ·  automation-engine  │   │
-         │  │  evolution-sync    ·  telegram-sync      │   │
-         │  │  metrics-publisher ·  alerts-checker     │   │
-         │  │  health-doctor     ·  mcp-warmer         │   │
-         │  └──────────────────┬──────────────────────┘   │
-         │                     │ Cloudflare Tunnel          │
-         └─────────────────────┼──────────────────────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              ▼                ▼                ▼
-           WhatsApp        Telegram         APIs ERP
-        (Evolution API)  (Bot API)        CRM · Cobrança
+│  1. Remix        │  2. Onboarding   │  3. VPS Setup   │ 4. Use │
+│  No Lovable      │  No painel       │  1 comando      │        │
+│  cria seu painel │  ERP + WA + key  │  aguarda 5 min  │ pronto │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Integrações (17 skills · 1.279 tools)
-
-| Categoria | Skills |
-|-----------|--------|
-| ERP | Omie, Bling, Tiny, Granatum, VHSYS, Nibo, ContaAzul |
-| CRM | HubSpot, RD Station, PipeRun, Pipedrive, Kommo |
-| Cobrança | Asaas, Iugu |
-| E-commerce | Mercado Livre, Nuvemshop |
-| Database | Supabase (multi-projeto via painel) |
-
----
-
-## Automações
-
-Configure via painel ou chat com Marcos:
-
-| Trigger | Exemplo |
-|---------|---------|
-| Cron | Relatório semanal às 9h toda segunda |
-| Métrica | Caixa < R$ 50k → alerta imediato |
-| Manual | "Marcos, cobra todos os inadimplentes" |
-
----
-
-## Daemons (infra da VPS)
-
-| Serviço | Função | Intervalo |
-|---------|--------|-----------|
-| `openclaw-gateway` | Agente Marcos (LLM + MCP) | always |
-| `cloudflared-cfo` | Tunnel Cloudflare | always |
-| `cfo-automation-engine` | Executa automações | 5min |
-| `cfo-credentials-sync` | Materializa secrets do painel | 3min |
-| `cfo-evolution-sync` | Sync instâncias WhatsApp | 30s |
-| `cfo-telegram-sync` | Registro de webhooks Telegram | 30s |
-| `cfo-supabase-sync` | MCP servers de projetos Supabase | 5min |
-| `cfo-mcp-warmer` | Pre-warm MCPs (reduz latência) | 10min |
-| `cfo-metrics-publisher` | Publica métricas pro painel | 60s |
-| `cfo-alerts-checker` | Avalia alertas configuráveis | 60s |
-| `cfo-health-doctor` | Auto-recovery de daemons | 60s |
-
----
-
-## Documentação
-
-| Doc | Descrição |
-|-----|-----------|
-| [docs/CLIENTE.md](docs/CLIENTE.md) | Guia do dono (sem jargão) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Arquitetura detalhada |
-| [docs/SPRINTS.md](docs/SPRINTS.md) | Histórico de entregas |
-| [docs/mcps.md](docs/mcps.md) | 17 integrações com tool count |
-| [docs/channels.md](docs/channels.md) | Pipeline WhatsApp/Telegram/Painel |
-| [docs/admin-actions.md](docs/admin-actions.md) | Controle via painel (21 ações) |
-| [docs/metrics.md](docs/metrics.md) | Observabilidade |
-| [docs/backup-restore.md](docs/backup-restore.md) | Backup e restore de config |
-| [docs/memory-portability.md](docs/memory-portability.md) | Export/import de memória |
-| [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Problemas comuns |
-| [docs/openclaw-ws.md](docs/openclaw-ws.md) | Protocolo WebSocket do gateway |
+1. **Remix** — clique no botão acima, crie seu painel Lovable em 1 minuto
+2. **Onboarding** — configure ERP, WhatsApp e chave Anthropic no wizard visual
+3. **Instale na VPS** — cole o comando gerado (1 linha) e aguarde ~5 min
+4. **Converse com Marcos** — no WhatsApp, Telegram ou chat web
 
 ---
 
@@ -137,29 +54,110 @@ Configure via painel ou chat com Marcos:
 
 | Camada | Tecnologia |
 |--------|-----------|
-| Frontend | TanStack Start + React + Tailwind (Lovable Cloud) |
-| Backend | Supabase (PostgreSQL + Edge Functions + Realtime + Storage) |
-| Agente | OpenClaw + Claude Sonnet 4.6 (Anthropic) |
-| MCPs | Python 3.12 / stdio (17 servers, 1.279 tools) |
-| Mensageria WA | Evolution API (multi-instância) |
-| Mensageria TG | Telegram Bot API |
-| Infra VPS | Ubuntu 22.04+ + systemd (14 units) |
-| Tunnel | Cloudflare quick tunnel |
+| Agente LLM | Claude Sonnet 4.6 via Anthropic API |
+| Orquestrador | [OpenClaw](https://openclaw.ai) |
+| Protocolo ferramentas | MCP (Model Context Protocol) |
+| Backend | Supabase (PostgreSQL + Edge Functions + Realtime) |
+| Frontend | React + Vite + TanStack Router (Lovable) |
+| Canais | WhatsApp (Evolution API + wacli) · Telegram Bot API |
+| Infra cliente | VPS Ubuntu 22.04+ (qualquer provedor) |
 
 ---
 
-## Self-update (zero SSH)
+## Skills disponíveis (25 skills CFO)
 
-```bash
-# Via painel: Configurações → Sistema → "Atualizar VPS"
-# Ou Marcos faz por você quando pedido
+### Dados em tempo real (17 MCPs, 1.372 tools)
+| Categoria | Skills |
+|-----------|--------|
+| **ERP** | Omie · Bling · Tiny · Granatum · VHSYS · Nibo · ContaAzul |
+| **CRM** | HubSpot · Pipedrive · PipeRun · Kommo · RD Station |
+| **Cobrança** | Asaas · Iugu |
+| **E-commerce** | Mercado Livre · Nuvemshop |
+| **Banco de dados** | Supabase (multi-projeto) |
 
-# Manual (se necessário):
-bash ~/.openclaw/workspace/skills/agente-cfo/scripts/self_update.sh
+### Análise & Planejamento (14 skills PhD)
+| Skill | Capacidade |
+|-------|-----------|
+| `cfo-analise-estrategica` | DRE, margens, KPIs (DSO/DPO/CCC), vertical/horizontal |
+| `cfo-projecao` | Runway, burn rate, cenários otimista/realista/pessimista |
+| `cfo-inadimplencia` | Aging, top devedores, plano de cobrança priorizado |
+| `cfo-anomalias` | Z-score de despesas, concentração de clientes |
+| `cfo-tributacao-br` | Calendário fiscal BR (DAS/FGTS/IRPJ/13º) |
+| `cfo-cobranca-orquestrada` | Workflow de cobrança em lote com confirmação |
+| `cfo-relatorios-executivos` | Relatório semanal/mensal com recomendações |
+| `cfo-planejamento` | Planos de ação com milestones semanais |
+| `cfo-cenarios-nomeados` | Cenários salvos e comparados lado-a-lado |
+| `cfo-what-if` | Simulador "e se?" mês-a-mês + varredura de ponto ótimo |
+| `cfo-calendario-acoes` | Calendário acionável: fiscal + cobrança + pagamentos |
+| `cfo-sensitivity` | Análise de sensibilidade — qual variável tem mais alavanca |
+| `cfo-decisao-estrategica` | 2-3 alternativas + tradeoffs + recomendação explícita |
+| `cfo-conciliacao-*` | Conciliação cross-sistema (cobrança/ecommerce/CRM/banco) |
+
+---
+
+## Arquitetura
+
 ```
+┌─────────────────────────────────────────────────────────┐
+│                   Painel Web (Lovable)                   │
+│              chat · relatórios · configurações           │
+└────────────────────────┬────────────────────────────────┘
+                         │ Supabase (PostgreSQL + Realtime)
+┌────────────────────────▼────────────────────────────────┐
+│              VPS do Cliente (Ubuntu 22.04+)              │
+│                                                         │
+│  OpenClaw Gateway ← webhooks Evolution API / Telegram   │
+│       │                                                  │
+│       ▼                                                  │
+│  Marcos (Claude Sonnet 4.6)                             │
+│       │                                                  │
+│       ├─→ MCP: Omie (96 tools)                          │
+│       ├─→ MCP: HubSpot (463 tools)                      │
+│       ├─→ MCP: Asaas (33 tools)                         │
+│       ├─→ ... 14 outros MCPs                            │
+│       │                                                  │
+│  9 daemons systemd (heartbeat, sync, alerts, ...)       │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Custos mensais estimados
+
+| Item | Custo estimado |
+|------|---------------|
+| VPS (Hetzner CX22) | €5/mês (~R$30) |
+| Anthropic API (uso moderado) | ~R$30–80 |
+| Lovable (free tier) | Grátis |
+| **Total** | **~R$60–110/mês** |
+
+---
+
+## Pré-requisitos
+
+- Conta Anthropic com API key (`sk-ant-...`)
+- VPS Ubuntu 22.04+ com 1 vCPU e 1 GB RAM
+- ERP com API ativa (Omie recomendado para começar)
+- Número WhatsApp (chip dedicado recomendado)
+
+### VPS recomendadas
+
+| Provedor | Plano | Preço |
+|----------|-------|-------|
+| [Hetzner](https://hetzner.com/cloud) | CX22 (2 vCPU / 4 GB) | €4,35/mês |
+| [DigitalOcean](https://digitalocean.com) | Droplet Basic 2 GB | $12/mês |
+| [Hostinger](https://hostinger.com.br/vps) | VPS 1 | R$24/mês |
 
 ---
 
 ## Licença
 
-Código MIT. Cada instância é independente — você é dono da sua infra, dados e credenciais.
+MIT — você é dono do código, dos dados e da infra.
+
+---
+
+## Contribuir
+
+PRs bem-vindos. Veja [SPRINTS.md](docs/SPRINTS.md) para o roadmap.
+
+Comunidade: [Viver de IA](https://viverdeia.ai)
