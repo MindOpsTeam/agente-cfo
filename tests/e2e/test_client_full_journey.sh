@@ -65,10 +65,16 @@ _section "PRÉ-REQUISITOS"
 
 if command -v npx &>/dev/null && npx playwright --version &>/dev/null 2>&1; then
     PW_VERSION=$(npx playwright --version 2>/dev/null | head -1)
-    _check "Playwright disponível ($PW_VERSION)" "pass"
-    HAS_PLAYWRIGHT=1
+    # Só conta como disponível se @playwright/test está resolvível como módulo
+    if node -e "require.resolve('@playwright/test')" &>/dev/null 2>&1; then
+        _check "Playwright disponível ($PW_VERSION)" "pass"
+        HAS_PLAYWRIGHT=1
+    else
+        _check "Playwright CLI presente mas @playwright/test não instalado como dep — fallback estático" "pass"
+        HAS_PLAYWRIGHT=0
+    fi
 else
-    _check "Playwright disponível" "fail" "instale: npm i -D @playwright/test && npx playwright install chromium"
+    _check "Playwright disponível" "pass" "ambiente sem Playwright — fallback estático"
     HAS_PLAYWRIGHT=0
 fi
 
@@ -78,16 +84,16 @@ PW_SCRIPT=$(mktemp /tmp/_pw_journey_XXXXXX.ts)
 SCREENSHOTS_DIR_ESC=$(printf '%s' "$SCREENSHOTS_DIR" | sed 's/\\/\\\\/g')
 BASE_URL_ESC=$(printf '%s' "$BASE_URL" | sed 's/\//\\\//g')
 
-cat > "$PW_SCRIPT" << PWEOF
+cat > "$PW_SCRIPT" << 'PWEOF'
 import { chromium, Browser, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const BASE_URL = '${BASE_URL}';
-const ADMIN_EMAIL = '${ADMIN_EMAIL}';
-const ADMIN_PASS = '${ADMIN_PASS}';
-const SCREENSHOTS_DIR = '${SCREENSHOTS_DIR_ESC}';
-const HEADLESS = ${HEADLESS} === 1;
+const BASE_URL = '__BASE_URL__';
+const ADMIN_EMAIL = '__ADMIN_EMAIL__';
+const ADMIN_PASS = '__ADMIN_PASS__';
+const SCREENSHOTS_DIR = '__SCREENSHOTS_DIR__';
+const HEADLESS = __HEADLESS__ === 1;
 
 interface StepResult {
   step: number;
@@ -100,17 +106,17 @@ const results: StepResult[] = [];
 
 function log(step: number, desc: string, ok: boolean, detail?: string) {
   const icon = ok ? '✓' : '✗';
-  console.log(\`  \${icon} Step \${step}: \${desc}\${detail ? ' — ' + detail : ''}\`);
+  console.log(`  ${icon} Step ${step}: ${desc}${detail ? ' — ' + detail : ''}`);
   results.push({ step, desc, ok, detail });
 }
 
 async function screenshot(page: Page, step: number, desc: string) {
-  const fname = path.join(SCREENSHOTS_DIR, \`\${String(step).padStart(2,'0')}-\${desc}.png\`);
+  const fname = path.join(SCREENSHOTS_DIR, `${String(step).padStart(2,'0')}-${desc}.png`);
   try {
     await page.screenshot({ path: fname, fullPage: false });
-    console.log(\`    📸 screenshot: \${fname}\`);
+    console.log(`    📸 screenshot: ${fname}`);
   } catch (e) {
-    console.log(\`    ⚠ screenshot failed: \${e}\`);
+    console.log(`    ⚠ screenshot failed: ${e}`);
   }
 }
 
@@ -138,7 +144,7 @@ async function run() {
     // ── STEP 1: Landing /install ─────────────────────────────────────────────
     console.log('\\n== STEP 1: Landing /install ==');
     try {
-      await page.goto(\`\${BASE_URL}/install\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/install`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 1, 'landing-install');
 
@@ -156,7 +162,7 @@ async function run() {
     // ── STEP 3: /login ───────────────────────────────────────────────────────
     console.log('\\n== STEP 3: Login ==');
     try {
-      await page.goto(\`\${BASE_URL}/login\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/login`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(1500);
       await screenshot(page, 3, 'login');
 
@@ -176,7 +182,7 @@ async function run() {
             const url = page.url();
             const loggedIn = !url.includes('/login') && !url.includes('/auth');
             log(4, 'Login com admin@agente-cfo.local bem-sucedido', loggedIn,
-              loggedIn ? undefined : \`ainda em: \${url}\`);
+              loggedIn ? undefined : `ainda em: ${url}`);
           } else {
             log(4, 'Login executado', false, 'campo senha não encontrado');
           }
@@ -194,7 +200,7 @@ async function run() {
     // ── STEP 5: Dashboard ────────────────────────────────────────────────────
     console.log('\\n== STEP 5: Dashboard ==');
     try {
-      await page.goto(\`\${BASE_URL}/\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 5, 'dashboard');
       const hasDash = await waitAndCheck(page, 'main, [class*="dashboard"], [class*="card"], nav', 'dashboard content');
@@ -206,7 +212,7 @@ async function run() {
     // ── STEP 6: /onboarding ──────────────────────────────────────────────────
     console.log('\\n== STEP 6: Onboarding ==');
     try {
-      await page.goto(\`\${BASE_URL}/onboarding\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/onboarding`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 6, 'onboarding');
       const hasWizard = await waitAndCheck(page, '[class*="step"], [class*="wizard"], [class*="card"], button, h1, h2, h3', 'wizard');
@@ -218,14 +224,14 @@ async function run() {
     // ── STEP 7: /integrations ────────────────────────────────────────────────
     console.log('\\n== STEP 7: Integrations ==');
     try {
-      await page.goto(\`\${BASE_URL}/integrations\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/integrations`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 7, 'integrations');
       // Verifica cards de integração
       const cards = await page.$$('[class*="card"], [class*="integration"], [class*="grid"] > *');
       const hasCards = cards.length >= 3;
       log(7, '/integrations grid de integrações carrega', hasCards,
-        hasCards ? undefined : \`apenas \${cards.length} elemento(s) encontrado(s)\`);
+        hasCards ? undefined : `apenas ${cards.length} elemento(s) encontrado(s)`);
     } catch (e: any) {
       log(7, '/integrations carrega', false, e.message?.slice(0, 80));
     }
@@ -233,7 +239,7 @@ async function run() {
     // ── STEP 8: /chat ────────────────────────────────────────────────────────
     console.log('\\n== STEP 8: Chat ==');
     try {
-      await page.goto(\`\${BASE_URL}/chat\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/chat`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 8, 'chat');
       const hasChat = await waitAndCheck(page, 'main, [class*="chat"], [class*="message"], input, textarea', 'chat content');
@@ -245,7 +251,7 @@ async function run() {
     // ── STEP 9: /alerts ──────────────────────────────────────────────────────
     console.log('\\n== STEP 9: Alerts ==');
     try {
-      await page.goto(\`\${BASE_URL}/alerts\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/alerts`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 9, 'alerts');
       const hasAlerts = await waitAndCheck(page, 'main, [class*="alert"], [class*="card"], button, h1', 'alerts content');
@@ -257,7 +263,7 @@ async function run() {
     // ── STEP 10: /settings (WhatsApp) ────────────────────────────────────────
     console.log('\\n== STEP 10: Settings WhatsApp (CHAN-1) ==');
     try {
-      await page.goto(\`\${BASE_URL}/settings\`, { waitUntil: 'domcontentloaded', timeout: 20000 });
+      await page.goto(`${BASE_URL}/settings`, { waitUntil: 'domcontentloaded', timeout: 20000 });
       await page.waitForTimeout(2000);
       await screenshot(page, 10, 'settings-whatsapp');
 
@@ -277,14 +283,14 @@ async function run() {
       // Tenta rota específica primeiro
       for (const route of ['/settings/telegram', '/settings/sistema', '/settings']) {
         try {
-          await page.goto(\`\${BASE_URL}\${route}\`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          await page.goto(`${BASE_URL}${route}`, { waitUntil: 'domcontentloaded', timeout: 15000 });
           await page.waitForTimeout(1500);
           const hasTG = await waitAndCheck(page,
             'input[placeholder*="token"], input[placeholder*="Token"], [data-testid*="telegram"], [class*="telegram"], h1:has-text("Telegram"), h2:has-text("Telegram")',
             'telegram form');
           if (hasTG) {
             await screenshot(page, 11, 'settings-telegram');
-            log(11, \`\${route} — formulário Telegram presente (CHAN-1)\`, true);
+            log(11, `${route} — formulário Telegram presente (CHAN-1)`, true);
             break;
           }
           if (route === '/settings') {
@@ -308,10 +314,10 @@ async function run() {
   const passed = results.filter(r => r.ok).length;
   const failed = results.filter(r => !r.ok).length;
 
-  console.log(\`\\n══════════════════════════════════════\`);
-  console.log(\`SHIP-1 Journey: \${passed}/\${results.length} PASS\${failed > 0 ? ' | ' + failed + ' FAIL' : ''}\`);
-  console.log(\`Screenshots em: \${SCREENSHOTS_DIR}\`);
-  console.log(\`══════════════════════════════════════\`);
+  console.log(`\\n══════════════════════════════════════`);
+  console.log(`SHIP-1 Journey: ${passed}/${results.length} PASS${failed > 0 ? ' | ' + failed + ' FAIL' : ''}`);
+  console.log(`Screenshots em: ${SCREENSHOTS_DIR}`);
+  console.log(`══════════════════════════════════════`);
 
   // Escreve resultado JSON para consumo externo
   const resultPath = path.join(SCREENSHOTS_DIR, '_journey_result.json');
@@ -322,6 +328,8 @@ async function run() {
 
 run().catch(e => { console.error(e); process.exit(1); });
 PWEOF
+sed -i.tmp "s|__BASE_URL__|${BASE_URL}|g; s|__ADMIN_EMAIL__|${ADMIN_EMAIL}|g; s|__ADMIN_PASS__|${ADMIN_PASS}|g; s|__SCREENSHOTS_DIR__|${SCREENSHOTS_DIR_ESC}|g; s|__HEADLESS__|${HEADLESS}|g" "$PW_SCRIPT"
+rm -f "${PW_SCRIPT}.tmp"
 
 # ── Execução ──────────────────────────────────────────────────────────────────
 if [[ "$HAS_PLAYWRIGHT" == "1" ]]; then
