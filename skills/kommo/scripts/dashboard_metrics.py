@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill granatum — Agente CFO. Sprint INT-2."""
+"""Dashboard metrics para skill kommo — Agente CFO. Sprint INT-2.
+Kommo (ex-amoCRM) — CRM de funil de vendas.
+"""
 import os, json
 from datetime import datetime, timezone
 
-SKILL_NAME = "granatum"
-SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/granatum.env")
+SKILL_NAME = "kommo"
+SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/kommo.env")
 
 def _load_env() -> bool:
     if not os.path.exists(SECRETS_FILE):
@@ -32,13 +34,14 @@ def get_metrics() -> dict:
         "error": None,
     }
     has_creds = _load_env()
-    if not has_creds or not os.environ.get("GRANATUM_TOKEN"):
+    if not has_creds or not os.environ.get("KOMMO_ACCESS_TOKEN"):
         base["health"] = "credential_invalid"
-        base["error"] = f"Secrets não encontrados ou GRANATUM_TOKEN ausente: {SECRETS_FILE}"
+        base["error"] = f"Secrets não encontrados ou KOMMO_ACCESS_TOKEN ausente: {SECRETS_FILE}"
         return base
-    # Client não implementado ainda — cred presente, dados pendentes
+    # CRM — client não implementado; cred presente
     base["health"] = "no_data"
-    base["error"] = "Client Granatum não implementado. Credencial configurada."
+    base["metrics"] = {"pipeline_count": 0, "pipeline_weighted_brl": 0.0, "deals_won_30d_brl": 0.0}
+    base["error"] = "Client Kommo não implementado. Credencial configurada."
     return base
 
 if __name__ == '__main__':

@@ -1,0 +1,25 @@
+[Unit]
+Description=CFO OAuth Token Refresh Daemon
+Documentation=https://github.com/agente-cfo/docs/oauth-refresh
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={USER}
+Group={USER}
+# HOME explícito para que expanduser("~") funcione corretamente
+Environment=HOME=/home/{USER}
+ExecStart=/usr/bin/python3 /home/{USER}/.openclaw/workspace/skills/agente-cfo/scripts/oauth_refresh_daemon.py
+# Também tenta o caminho do workspace agente-cfo diretamente
+ExecStartPre=-/bin/sh -c 'test -f /home/{USER}/.openclaw/workspace/skills/agente-cfo/scripts/oauth_refresh_daemon.py || ln -sf /home/{USER}/agente-cfo/skills/agente-cfo/scripts/oauth_refresh_daemon.py /home/{USER}/.openclaw/workspace/skills/agente-cfo/scripts/oauth_refresh_daemon.py'
+Restart=always
+RestartSec=60s
+# Grace period antes de SIGKILL
+TimeoutStopSec=30s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cfo-oauth-refresh
+
+[Install]
+WantedBy=multi-user.target

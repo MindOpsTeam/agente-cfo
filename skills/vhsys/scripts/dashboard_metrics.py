@@ -1,19 +1,44 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill vhsys — Agente CFO."""
-import sys, os, json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '_lib'))
-from base import now_iso
+"""Dashboard metrics para skill vhsys — Agente CFO. Sprint INT-2."""
+import os, json
+from datetime import datetime, timezone
 
-# TODO: substituir stub pelo client real quando disponível
-# from vhsys_client import VHSYSERPClient
+SKILL_NAME = "vhsys"
+SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/vhsys.env")
+
+def _load_env() -> bool:
+    if not os.path.exists(SECRETS_FILE):
+        return False
+    try:
+        with open(SECRETS_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    k, _, v = line.partition('=')
+                    os.environ.setdefault(k.strip(), v.strip())
+        return True
+    except Exception:
+        return False
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 def get_metrics() -> dict:
-    try:
-        # client = VHSYSERPClient()
-        # return client.get_dashboard_metrics()
-        return {'health': {'status': 'not_configured', 'last_sync': now_iso()}}
-    except Exception as e:
-        return {'health': {'status': 'error', 'error': str(e), 'last_sync': now_iso()}}
+    base = {
+        "skill": SKILL_NAME,
+        "as_of": _now_iso(),
+        "metrics": {},
+        "health": "no_data",
+        "error": None,
+    }
+    has_creds = _load_env()
+    if not has_creds or not (os.environ.get("VHSYS_ACCESS_TOKEN") or os.environ.get("VHSYS_TOKEN")):
+        base["health"] = "credential_invalid"
+        base["error"] = f"Secrets não encontrados ou VHSYS_ACCESS_TOKEN ausente: {SECRETS_FILE}"
+        return base
+    base["health"] = "no_data"
+    base["error"] = "Client VhSys não implementado. Credencial configurada."
+    return base
 
 if __name__ == '__main__':
-    print(json.dumps(get_metrics(), default=str))
+    print(json.dumps(get_metrics(), ensure_ascii=False, default=str))

@@ -1441,6 +1441,11 @@ _add_cron_if_missing "CRON_ID_MARCOS_INSIGHTS" \
 _add_cron_if_missing "CRON_ID_BACKUP" \
     "openclaw cron add --name 'CFO Backup Diário' --cron '0 3 * * *' --tz 'America/Sao_Paulo' --session isolated --message 'Execute: bash ${SCRIPTS_DIR}/backup_config.sh >> ${LOG_DIR}/backup.log 2>&1 && echo Backup OK' --no-deliver --light-context --json"
 
+# Sprint INT-2: saúde mensal de integrações (dia 1 às 09:00)
+_add_cron_if_missing "CRON_ID_INTEGRATIONS_HEALTH" \
+    "openclaw cron add --name 'CFO Saúde Integrações Mensal' --cron '0 9 1 * *' --tz 'America/Sao_Paulo' --session isolated --no-deliver --light-context --json \
+     --message 'Execute: bash \$HOME/.openclaw/workspace/skills/agente-cfo/scripts/integrations_health_monthly.sh'"
+
 # Cria diretório de backups e chmod no script
 mkdir -p "${HOME}/.agente-cfo/backups"
 chmod +x "${SCRIPTS_DIR}/backup_config.sh" "${SCRIPTS_DIR}/restore_config.sh" 2>/dev/null || true
