@@ -311,6 +311,43 @@ except:
         OUT=$(bash "$SCRIPT" 2>&1) && _ok "$OUT" || _err "$OUT"
         ;;
 
+    # ── SPRINT CHAN-1: WhatsApp pairing via painel ────────────────────────────
+    whatsapp_pair_new)
+        # Cria instância + obtém QR code + faz upload pro Supabase Storage
+        INSTANCE="$(_get instance_name)"
+        [[ -z "$INSTANCE" ]] && { _err "instance_name obrigatório"; exit 0; }
+        # Valida nome de instância
+        if ! printf '%s' "$INSTANCE" | grep -qE '^[a-zA-Z0-9_-]{1,64}$'; then
+            _err "instance_name inválido (só alnum, hifen, underscore; max 64 chars)"
+            exit 0
+        fi
+        PAIR_SCRIPT="${HOME}/.openclaw/workspace/skills/evolution-api/scripts/whatsapp_pair_new.sh"
+        # Fallback: caminho relativo ao agente-cfo
+        [[ ! -f "$PAIR_SCRIPT" ]] && PAIR_SCRIPT="${HOME}/agente-cfo/skills/evolution-api/scripts/whatsapp_pair_new.sh"
+        if [[ ! -f "$PAIR_SCRIPT" ]]; then
+            _err "whatsapp_pair_new.sh não encontrado"
+            exit 0
+        fi
+        OUT=$(bash "$PAIR_SCRIPT" --instance "$INSTANCE" 2>&1) && _ok "$OUT" || _err "$OUT"
+        ;;
+
+    whatsapp_pair_status)
+        # Consulta estado de conexão de instância WhatsApp
+        INSTANCE="$(_get instance_name)"
+        [[ -z "$INSTANCE" ]] && { _err "instance_name obrigatório"; exit 0; }
+        if ! printf '%s' "$INSTANCE" | grep -qE '^[a-zA-Z0-9_-]{1,64}$'; then
+            _err "instance_name inválido"
+            exit 0
+        fi
+        STATUS_SCRIPT="${HOME}/.openclaw/workspace/skills/evolution-api/scripts/whatsapp_pair_status.sh"
+        [[ ! -f "$STATUS_SCRIPT" ]] && STATUS_SCRIPT="${HOME}/agente-cfo/skills/evolution-api/scripts/whatsapp_pair_status.sh"
+        if [[ ! -f "$STATUS_SCRIPT" ]]; then
+            _err "whatsapp_pair_status.sh não encontrado"
+            exit 0
+        fi
+        OUT=$(bash "$STATUS_SCRIPT" --instance "$INSTANCE" 2>&1) && _ok "$OUT" || _err "$OUT"
+        ;;
+
     # ── Ação desconhecida ──────────────────────────────────────────────────────
     *)
         VALID_ACTIONS=(
@@ -321,6 +358,7 @@ except:
             "openclaw_status" "openclaw_health" "openclaw_doctor"
             "systemctl_restart" "systemctl_start" "systemctl_stop" "systemctl_status"
             "service_logs" "mcp_sync_now" "self_update"
+            "whatsapp_pair_new" "whatsapp_pair_status"
                     )
         VALID_STR=$(printf '"%s" ' "${VALID_ACTIONS[@]}")
         _err "ação '$ACTION' desconhecida. Actions válidas: ${VALID_STR}"
