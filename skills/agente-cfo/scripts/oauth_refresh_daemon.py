@@ -14,8 +14,13 @@ from datetime import datetime, timezone
 INTERVAL_S = 600
 LOG_FILE = os.path.expanduser("~/.agente-cfo/logs/oauth-refresh.log")
 
-# Resolve base relativo ao home do usuário real
-BASE = os.path.expanduser("~/agente-cfo/skills")
+# Resolve base relativo ao workspace OpenClaw real (skills sincronizadas via self_update)
+# Fallback retrocompatível: ~/agente-cfo/skills se workspace OpenClaw não existir
+BASE = os.environ.get("CFO_SKILLS_DIR")
+if not BASE:
+    _workspace_dir = os.path.expanduser("~/.openclaw/workspace/skills")
+    _legacy_dir = os.path.expanduser("~/agente-cfo/skills")
+    BASE = _workspace_dir if os.path.isdir(_workspace_dir) else _legacy_dir
 
 OAUTH_SKILLS = [
     ("bling",         f"{BASE}/bling/scripts/oauth_refresh.py"),
