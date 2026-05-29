@@ -23,7 +23,7 @@ import logging
 import subprocess
 import urllib.request
 import urllib.error
-from datetime import datetime
+from datetime import datetime, timezone
 
 LOG_DIR = os.path.expanduser("~/.agente-cfo/logs")
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -112,12 +112,43 @@ def _collect(name):
                 "health": {"status": "error", "last_sync": None}}
 
 
+def _collect_report(label, script_name, days=90):
+    """Roda erp_gateway/crm_gateway pra obter um report e devolve o JSON cru.
+    Em qualquer falha (rc!=0, timeout, JSON inválido, script ausente) -> {}."""
+    script = os.path.expanduser(
+        f"~/.openclaw/workspace/skills/agente-cfo/scripts/{script_name}"
+    )
+    cmd_map = {
+        "erp_gateway.py": "get_cash_projection",
+        "crm_gateway.py": "get_pipeline_projection",
+    }
+    subcommand = cmd_map.get(script_name, "")
+    try:
+        result = subprocess.run(
+            ["python3", script, subcommand, "--days", str(days), "--json"],
+            capture_output=True, text=True, timeout=45,
+        )
+        if result.returncode != 0:
+            log.warning("%s rc=%s: %s", label, result.returncode, result.stderr.strip()[:200])
+            return {}
+        return json.loads(result.stdout)
+    except subprocess.TimeoutExpired:
+        log.warning("%s timeout", label)
+        return {}
+    except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
+        log.warning("%s falhou: %s", label, e)
+        return {}
+    except Exception as e:
+        log.warning("%s falhou (inesperado): %s", label, e)
+        return {}
+
+
 def _build_payload():
     active_integrations = _discover_integrations()
     results = [_collect(name) for name in active_integrations]
 
     payload = {
-        "as_of": datetime.utcnow().isoformat() + "Z",
+        "as_of": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "kpis": {
             "balance_brl": next((d["balance_brl"] for d in results if d.get("balance_brl", 0) > 0), 0),
             "receivables_30d_brl": sum(d.get("receivables_brl", 0) for d in results),
@@ -138,6 +169,12 @@ def _build_payload():
             {"name": name, "status": d.get("health", {}).get("status", "error"), "last_sync": d.get("health", {}).get("last_sync")}
             for name, d in zip(active_integrations, results)
         ],
+    }
+
+    # Embute reports completos (JSON cru dos gateways) — fallback {} em falha.
+    payload["reports"] = {
+        "cash_projection": _collect_report("erp_gateway get_cash_projection", "erp_gateway.py"),
+        "pipeline_projection": _collect_report("crm_gateway get_pipeline_projection", "crm_gateway.py"),
     }
     return payload
 
