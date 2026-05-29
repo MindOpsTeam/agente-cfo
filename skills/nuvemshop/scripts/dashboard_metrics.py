@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill nuvemshop — Agente CFO. Sprint INT-2."""
+"""Dashboard metrics para skill nuvemshop — Agente CFO. Contrato plano canônico (FIX-KPI).
+E-commerce: ecommerce_revenue_month_brl."""
 import sys, os, json
 from datetime import datetime, timezone
 
 SKILL_NAME = "nuvemshop"
 SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/nuvemshop.env")
+TOKEN_ENV = "NS_ACCESS_TOKEN"
+
 
 def _load_env() -> bool:
     if not os.path.exists(SECRETS_FILE):
@@ -20,58 +23,44 @@ def _load_env() -> bool:
     except Exception:
         return False
 
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+
 def get_metrics() -> dict:
-    base = {
-        "skill": SKILL_NAME,
-        "as_of": _now_iso(),
-        "metrics": {},
-        "health": "no_data",
-        "error": None,
+    out = {
+        "ecommerce_revenue_month_brl": 0.0,
+        "health": {"status": "no_data", "last_sync": _now_iso()},
     }
     has_creds = _load_env()
-    if not has_creds or not os.environ.get("NS_ACCESS_TOKEN"):
-        base["health"] = "credential_invalid"
-        base["error"] = f"Secrets não encontrados ou NS_ACCESS_TOKEN ausente: {SECRETS_FILE}"
-        return base
+    if not has_creds or not os.environ.get(TOKEN_ENV):
+        out["health"] = {"status": "credential_invalid", "last_sync": _now_iso()}
+        return out
 
     try:
         sys.path.insert(0, os.path.dirname(__file__))
         from nuvemshop_client import NuvemshopClient
         client = NuvemshopClient()
-
-        metrics = {}
         degraded = False
 
         try:
             orders = client.list_orders_30d(limit=200)
             items = orders if isinstance(orders, list) else orders.get("results", [])
-            revenue = sum(float(o.get("total", 0)) for o in items)
-            metrics["revenue_30d_brl"] = round(revenue, 2)
-            metrics["orders_30d_count"] = len(items)
-            metrics["ticket_avg_brl"] = round(revenue / len(items), 2) if items else 0.0
+            out["ecommerce_revenue_month_brl"] = round(sum(float(o.get("total", 0) or 0) for o in items), 2)
         except Exception:
-            metrics["revenue_30d_brl"] = 0.0
-            metrics["orders_30d_count"] = 0
-            metrics["ticket_avg_brl"] = 0.0
             degraded = True
 
-        base["metrics"] = metrics
-        base["health"] = "degraded" if degraded else "ok"
+        out["health"] = {"status": "degraded" if degraded else "ok", "last_sync": _now_iso()}
 
-    except ImportError as e:
-        base["health"] = "no_data"
-        base["error"] = f"Client não disponível: {e}"
+    except ImportError:
+        out["health"] = {"status": "no_data", "last_sync": _now_iso()}
     except Exception as e:
-        err_str = str(e)
-        if any(k in err_str.lower() for k in ("401", "403", "invalid", "token", "unauthorized")):
-            base["health"] = "credential_invalid"
-        else:
-            base["health"] = "error"
-        base["error"] = err_str[:300]
-    return base
+        err = str(e).lower()
+        status = "credential_invalid" if any(k in err for k in ("401", "403", "invalid", "token", "unauthorized")) else "error"
+        out["health"] = {"status": status, "last_sync": _now_iso()}
+    return out
+
 
 if __name__ == '__main__':
     print(json.dumps(get_metrics(), ensure_ascii=False, default=str))

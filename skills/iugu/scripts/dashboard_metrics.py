@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill iugu — Agente CFO. Sprint INT-2."""
+"""Dashboard metrics para skill iugu — Agente CFO. Contrato plano canônico (FIX-KPI).
+Cobrança: receivables_brl = pending, overdue_total_brl = defaulted (paid_30d ignorado)."""
 import sys, os, json
 from datetime import datetime, timezone
 
 SKILL_NAME = "iugu"
 SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/iugu.env")
+TOKEN_ENV = "IUGU_API_TOKEN"
+
 
 def _load_env() -> bool:
     if not os.path.exists(SECRETS_FILE):
@@ -20,66 +23,50 @@ def _load_env() -> bool:
     except Exception:
         return False
 
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+
 def get_metrics() -> dict:
-    base = {
-        "skill": SKILL_NAME,
-        "as_of": _now_iso(),
-        "metrics": {},
-        "health": "no_data",
-        "error": None,
+    out = {
+        "receivables_brl": 0.0,
+        "overdue_total_brl": 0.0,
+        "health": {"status": "no_data", "last_sync": _now_iso()},
     }
     has_creds = _load_env()
-    if not has_creds or not os.environ.get("IUGU_API_TOKEN"):
-        base["health"] = "credential_invalid"
-        base["error"] = f"Secrets não encontrados ou IUGU_API_TOKEN ausente: {SECRETS_FILE}"
-        return base
+    if not has_creds or not os.environ.get(TOKEN_ENV):
+        out["health"] = {"status": "credential_invalid", "last_sync": _now_iso()}
+        return out
 
     try:
         sys.path.insert(0, os.path.dirname(__file__))
         from iugu_client import IuguClient
         client = IuguClient()
-
-        metrics = {}
         degraded = False
 
         try:
             pending = client.list_pending(limit=200)
-            metrics["pending_brl"] = round(sum(float(i.get("cents", 0)) / 100 for i in pending.get("items", [])), 2)
+            out["receivables_brl"] = round(sum(float(i.get("cents", 0) or 0) / 100 for i in pending.get("items", [])), 2)
         except Exception:
-            metrics["pending_brl"] = 0.0
-            degraded = True
-
-        try:
-            paid = client.list_paid_30d(limit=200)
-            metrics["paid_30d_brl"] = round(sum(float(i.get("cents", 0)) / 100 for i in paid.get("items", [])), 2)
-        except Exception:
-            metrics["paid_30d_brl"] = 0.0
             degraded = True
 
         try:
             overdue = client.list_overdue(limit=200)
-            metrics["defaulted_brl"] = round(sum(float(i.get("cents", 0)) / 100 for i in overdue.get("items", [])), 2)
+            out["overdue_total_brl"] = round(sum(float(i.get("cents", 0) or 0) / 100 for i in overdue.get("items", [])), 2)
         except Exception:
-            metrics["defaulted_brl"] = 0.0
             degraded = True
 
-        base["metrics"] = metrics
-        base["health"] = "degraded" if degraded else "ok"
+        out["health"] = {"status": "degraded" if degraded else "ok", "last_sync": _now_iso()}
 
-    except ImportError as e:
-        base["health"] = "no_data"
-        base["error"] = f"Client não disponível: {e}"
+    except ImportError:
+        out["health"] = {"status": "no_data", "last_sync": _now_iso()}
     except Exception as e:
-        err_str = str(e)
-        if any(k in err_str.lower() for k in ("401", "403", "invalid", "token", "unauthorized")):
-            base["health"] = "credential_invalid"
-        else:
-            base["health"] = "error"
-        base["error"] = err_str[:300]
-    return base
+        err = str(e).lower()
+        status = "credential_invalid" if any(k in err for k in ("401", "403", "invalid", "token", "unauthorized")) else "error"
+        out["health"] = {"status": status, "last_sync": _now_iso()}
+    return out
+
 
 if __name__ == '__main__':
     print(json.dumps(get_metrics(), ensure_ascii=False, default=str))

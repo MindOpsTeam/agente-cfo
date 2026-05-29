@@ -66,7 +66,7 @@ def main() -> None:
     # ── Coleta métricas localmente ───────────────────────────────────────
     results: dict[str, dict] = {}
     for skill in skills:
-        script = f"/opt/agente-cfo/skills/{skill}/scripts/dashboard_metrics.py"
+        script = os.path.expanduser(f"~/.openclaw/workspace/skills/{skill}/scripts/dashboard_metrics.py")
         try:
             proc = subprocess.run(
                 ["python3", script],

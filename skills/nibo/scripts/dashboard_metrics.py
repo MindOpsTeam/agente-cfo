@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill nibo — Agente CFO. Sprint INT-2."""
+"""Dashboard metrics para skill nibo — Agente CFO. Contrato plano canônico (FIX-KPI).
+ERP financeiro — client ainda não implementado; retorna contrato plano vazio."""
 import os, json
 from datetime import datetime, timezone
 
 SKILL_NAME = "nibo"
 SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/nibo.env")
+TOKEN_ENVS = ("NIBO_API_KEY",)
+
 
 def _load_env() -> bool:
     if not os.path.exists(SECRETS_FILE):
@@ -20,25 +23,28 @@ def _load_env() -> bool:
     except Exception:
         return False
 
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+
 def get_metrics() -> dict:
-    base = {
-        "skill": SKILL_NAME,
-        "as_of": _now_iso(),
-        "metrics": {},
-        "health": "no_data",
-        "error": None,
+    out = {
+        "balance_brl": 0.0,
+        "receivables_brl": 0.0,
+        "payables_brl": 0.0,
+        "overdue_total_brl": 0.0,
+        "top_debtors": [],
+        "cash_projection_90d": [],
+        "health": {"status": "no_data", "last_sync": _now_iso()},
     }
     has_creds = _load_env()
-    if not has_creds or not os.environ.get("NIBO_API_KEY"):
-        base["health"] = "credential_invalid"
-        base["error"] = f"Secrets não encontrados ou NIBO_API_KEY ausente: {SECRETS_FILE}"
-        return base
-    base["health"] = "no_data"
-    base["error"] = "Client Nibo não implementado. Credencial configurada."
-    return base
+    if not has_creds or not any(os.environ.get(e) for e in TOKEN_ENVS):
+        out["health"] = {"status": "credential_invalid", "last_sync": _now_iso()}
+        return out
+    out["health"] = {"status": "no_data", "last_sync": _now_iso()}
+    return out
+
 
 if __name__ == '__main__':
     print(json.dumps(get_metrics(), ensure_ascii=False, default=str))

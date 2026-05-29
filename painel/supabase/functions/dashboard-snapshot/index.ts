@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
             Authorization: `Bearer ${instance.hooks_token}`,
           },
           body: JSON.stringify({
-            message: `Execute: python3 /opt/agente-cfo/skills/${integration}/scripts/dashboard_metrics.py`,
+            message: `Execute: python3 $HOME/.openclaw/workspace/skills/${integration}/scripts/dashboard_metrics.py`,
             name: "DashboardSnapshot",
             deliver: false,
             timeoutSeconds: 30,

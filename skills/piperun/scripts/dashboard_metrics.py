@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill piperun — Agente CFO. Sprint INT-2."""
+"""Dashboard metrics para skill piperun — Agente CFO. Contrato plano canônico (FIX-KPI).
+CRM — client ainda não implementado; retorna contrato plano vazio."""
 import os, json
 from datetime import datetime, timezone
 
 SKILL_NAME = "piperun"
 SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/piperun.env")
+TOKEN_ENVS = ("PIPERUN_TOKEN",)
+
 
 def _load_env() -> bool:
     if not os.path.exists(SECRETS_FILE):
@@ -20,26 +23,24 @@ def _load_env() -> bool:
     except Exception:
         return False
 
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+
 def get_metrics() -> dict:
-    base = {
-        "skill": SKILL_NAME,
-        "as_of": _now_iso(),
-        "metrics": {},
-        "health": "no_data",
-        "error": None,
+    out = {
+        "pipeline_weighted_brl": 0.0,
+        "pipeline_by_stage": [],
+        "health": {"status": "no_data", "last_sync": _now_iso()},
     }
     has_creds = _load_env()
-    if not has_creds or not os.environ.get("PIPERUN_TOKEN"):
-        base["health"] = "credential_invalid"
-        base["error"] = f"Secrets não encontrados ou PIPERUN_TOKEN ausente: {SECRETS_FILE}"
-        return base
-    base["health"] = "no_data"
-    base["metrics"] = {"pipeline_count": 0, "pipeline_weighted_brl": 0.0, "deals_won_30d_brl": 0.0}
-    base["error"] = "Client Piperun não implementado. Credencial configurada."
-    return base
+    if not has_creds or not any(os.environ.get(e) for e in TOKEN_ENVS):
+        out["health"] = {"status": "credential_invalid", "last_sync": _now_iso()}
+        return out
+    out["health"] = {"status": "no_data", "last_sync": _now_iso()}
+    return out
+
 
 if __name__ == '__main__':
     print(json.dumps(get_metrics(), ensure_ascii=False, default=str))

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Dashboard metrics para skill kommo — Agente CFO. Sprint INT-2.
-Kommo (ex-amoCRM) — CRM de funil de vendas.
-"""
+"""Dashboard metrics para skill kommo — Agente CFO. Contrato plano canônico (FIX-KPI).
+Kommo (ex-amoCRM) — CRM de funil. Client ainda não implementado; contrato plano vazio."""
 import os, json
 from datetime import datetime, timezone
 
 SKILL_NAME = "kommo"
 SECRETS_FILE = os.path.expanduser("~/.openclaw/secrets/kommo.env")
+TOKEN_ENVS = ("KOMMO_ACCESS_TOKEN",)
+
 
 def _load_env() -> bool:
     if not os.path.exists(SECRETS_FILE):
@@ -22,27 +23,24 @@ def _load_env() -> bool:
     except Exception:
         return False
 
+
 def _now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+
 def get_metrics() -> dict:
-    base = {
-        "skill": SKILL_NAME,
-        "as_of": _now_iso(),
-        "metrics": {},
-        "health": "no_data",
-        "error": None,
+    out = {
+        "pipeline_weighted_brl": 0.0,
+        "pipeline_by_stage": [],
+        "health": {"status": "no_data", "last_sync": _now_iso()},
     }
     has_creds = _load_env()
-    if not has_creds or not os.environ.get("KOMMO_ACCESS_TOKEN"):
-        base["health"] = "credential_invalid"
-        base["error"] = f"Secrets não encontrados ou KOMMO_ACCESS_TOKEN ausente: {SECRETS_FILE}"
-        return base
-    # CRM — client não implementado; cred presente
-    base["health"] = "no_data"
-    base["metrics"] = {"pipeline_count": 0, "pipeline_weighted_brl": 0.0, "deals_won_30d_brl": 0.0}
-    base["error"] = "Client Kommo não implementado. Credencial configurada."
-    return base
+    if not has_creds or not any(os.environ.get(e) for e in TOKEN_ENVS):
+        out["health"] = {"status": "credential_invalid", "last_sync": _now_iso()}
+        return out
+    out["health"] = {"status": "no_data", "last_sync": _now_iso()}
+    return out
+
 
 if __name__ == '__main__':
     print(json.dumps(get_metrics(), ensure_ascii=False, default=str))
