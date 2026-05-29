@@ -917,6 +917,31 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
+
+# Unit cfo-dashboard-publisher — KPIs financeiros (push model, FIX-KPI-2)
+_DASHBOARD_PUBLISHER_SCRIPT="${SKILL_DEST}/scripts/dashboard_publisher.py"
+cat > /etc/systemd/system/cfo-dashboard-publisher.service << EOF
+[Unit]
+Description=Agente CFO - Dashboard Publisher (snapshot financeiro -> painel)
+After=network.target openclaw-gateway.service
+Wants=openclaw-gateway.service
+
+[Service]
+Type=simple
+User=${_USER_NAME}
+Environment=HOME=${HOME}
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=${ENV_FILE}
+ExecStart=/usr/bin/python3 ${_DASHBOARD_PUBLISHER_SCRIPT}
+Restart=always
+RestartSec=10
+Environment=DASHBOARD_PUBLISHER_INTERVAL_S=${DASHBOARD_PUBLISHER_INTERVAL_S:-120}
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
 # Unit cfo-alerts-checker — Alertas configuráveis (Sprint 42)
 _ALERTS_CHECKER_SCRIPT="${SKILL_DEST}/scripts/alerts_checker.py"
 cat > /etc/systemd/system/cfo-alerts-checker.service << EOF
@@ -1293,6 +1318,10 @@ ok "cfo-mcp-warmer.service iniciado (pre-warm MCPs a cada ${MCP_WARMER_INTERVAL_
 chmod +x "${SKILL_DEST}/scripts/metric_emit.sh" 2>/dev/null || true
 systemctl enable --now cfo-metrics-publisher 2>/dev/null || warn "systemctl enable cfo-metrics-publisher falhou."
 ok "cfo-metrics-publisher.service iniciado (publica métricas a cada ${METRICS_PUBLISHER_INTERVAL_S:-60}s)."
+
+# Iniciar dashboard publisher (FIX-KPI-2 — snapshot financeiro push)
+systemctl enable --now cfo-dashboard-publisher 2>/dev/null || warn "systemctl enable cfo-dashboard-publisher falhou."
+ok "cfo-dashboard-publisher.service iniciado (snapshot financeiro a cada ${DASHBOARD_PUBLISHER_INTERVAL_S:-120}s)."
 
 # Iniciar alerts checker (Sprint 42 — alertas configuráveis)
 systemctl enable --now cfo-alerts-checker 2>/dev/null || warn "systemctl enable cfo-alerts-checker falhou."
