@@ -96,6 +96,18 @@ fi
 # ─────────────────────────────────────────────────────────────────────────────
 step "1/13 — Verificando dependências"
 
+# ── Aviso de recursos (CPU/RAM) ──────────────────────────────────────────────
+# 1 vCPU com o profile 'coding' satura a CPU (100% sustentado) e provedores ATIVAM
+# throttle, travando o agente (model_call pendura, disco fica lento). Recomendado 2+ vCPU.
+_NCPU=$(nproc 2>/dev/null || echo 1)
+_RAM_MB=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}')
+if [[ "${_NCPU:-1}" -lt 2 ]]; then
+    warn "Esta VPS tem apenas ${_NCPU} vCPU. O agente (profile 'coding') pode saturar a CPU e o provedor pode ativar throttle, deixando o Marcos lento/travado. RECOMENDADO: 2+ vCPU."
+fi
+if [[ -n "${_RAM_MB:-}" && "${_RAM_MB}" -lt 3500 ]]; then
+    warn "RAM baixa (${_RAM_MB} MB). Recomendado 4GB+ para o OpenClaw + skills + daemons."
+fi
+
 # ── Node check ≥22.12 + auto-install via NodeSource ──────────────────────────
 # OpenClaw 2026.5+ requer Node v22.12+. Node 18/20 causa hard error na inicialização.
 _install_node22() {
