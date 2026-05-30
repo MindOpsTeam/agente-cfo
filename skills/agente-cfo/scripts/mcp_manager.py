@@ -114,6 +114,32 @@ def _config_get_servers() -> set:
 
 # ── API pública ───────────────────────────────────────────────────────────────
 
+def _probe_mcp(command: str, args: list, env: Optional[dict] = None, timeout: int = 4) -> bool:
+    """Testa se o MCP server sobe sem crashar antes de registrar.
+    Um MCP stdio saudável fica VIVO aguardando input; se sair sozinho em poucos segundos
+    (deps faltando, erro de import), está quebrado e penduraria o gateway com 'Connection
+    closed' em loop, saturando o event loop. Retorna True só se o server parece saudável.
+    """
+    full_env = {**os.environ, **{k: str(v) for k, v in (env or {}).items()}}
+    try:
+        proc = subprocess.Popen(
+            [command, *(args or [])], env=full_env,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+    except Exception:
+        return False
+    try:
+        proc.wait(timeout=timeout)   # saiu sozinho → crashou → quebrado
+        return False
+    except subprocess.TimeoutExpired:
+        proc.kill()                  # ainda vivo aguardando input → saudável
+        try:
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+        return True
+
+
 def register_mcp(
     name: str,
     command: str,
@@ -133,6 +159,17 @@ def register_mcp(
 
     # Sem mudança → skip
     if state.get(name) == new_hash and name in _config_get_servers():
+        return False
+
+    # Health-check: não registra MCP que não sobe (evita pendurar o gateway com
+    # 'Connection closed' em loop, saturando o event loop — causa de runs travados).
+    if not _probe_mcp(command, args, env):
+        _mcp_log(f"[register] {name}: PROBE FALHOU (server não sobe) — PULANDO registro pra não pendurar o gateway.", log_fn)
+        # Se ficou registrado de um run anterior, remove pra limpar o estado.
+        if name in _config_get_servers():
+            _config_unset(dot_path := f"mcp.servers.{name}")
+            state.pop(name, None)
+            _save_state(state)
         return False
 
     # Monta entrada JSON
