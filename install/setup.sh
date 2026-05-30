@@ -509,6 +509,7 @@ cat > "$_ANTHROPIC_PATCH" <<'ANTEOF'
             "id": "claude-sonnet-4-6",
             "name": "Claude Sonnet 4.6",
             "api": "anthropic-messages",
+            "maxTokens": 8192,
             "input": ["text", "image"]
           }
         ]
@@ -580,6 +581,11 @@ _wacli_connected() {
 
 if _wacli_connected; then
     ok "WhatsApp já pareado e conectado — pulando."
+elif [[ "${CI:-}" == "true" ]] || [[ "${NONINTERACTIVE:-}" == "1" ]] || [[ "${CFO_SKIP_WHATSAPP_PAIR:-}" == "1" ]] || [[ ! -r /dev/tty ]]; then
+    # Modo não-interativo: o wacli auth fica em loop infinito de QR ("Scan this QR code...")
+    # esperando alguém escanear, travando o setup. Pulamos — o WhatsApp é conectado depois
+    # pelo painel (Evolution API, recomendado) ou via 'wacli auth' manual.
+    warn "Pareamento WhatsApp (wacli) pulado — modo não-interativo. Conecte o WhatsApp depois pelo painel (Evolution) ou rode 'wacli auth' manualmente na VPS."
 else
     info "Iniciando pareamento WhatsApp..."
     echo ""
@@ -587,14 +593,17 @@ else
     echo "  1. WhatsApp no celular → ⋮ → Dispositivos conectados"
     echo "  2. Conectar um dispositivo → aponte para o QR code"
     echo ""
-    read -rp "Pressione ENTER para exibir o QR code..."
+    read -rp "Pressione ENTER para exibir o QR code (Ctrl+C para pular e usar Evolution)..."
 
-    wacli auth || fail "Falha no pareamento. Execute 'wacli auth' manualmente e tente de novo."
+    # timeout: nunca deixa o wacli auth pendurar o setup indefinidamente. Falha é não-fatal
+    # (o canal WhatsApp pode ser conectado pelo painel via Evolution).
+    timeout 180 wacli auth || \
+        warn "Pareamento wacli não concluído (timeout/erro). Conecte o WhatsApp pelo painel (Evolution) ou rode 'wacli auth' depois."
 
     sleep 3
     _wacli_connected || \
-        warn "WhatsApp pareado mas conexão ainda não confirmada. Verifique 'wacli doctor' após o setup."
-    ok "WhatsApp pareado."
+        warn "WhatsApp ainda não confirmado. Verifique 'wacli doctor' após o setup, ou use Evolution pelo painel."
+    ok "Etapa de pareamento concluída."
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1114,8 +1123,14 @@ _install_skill_from_repo() {
     info "Clonando skill '${skill_name}' do monorepo..."
     local clone_dir="/tmp/agente-cfo-skill-${skill_name}-clone"
     rm -rf "$clone_dir"
-    git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$clone_dir" 2>/dev/null || \
-        fail "Falha ao clonar $SKILL_REPO para skill ${skill_name}."
+    # Retry: um hiccup transitório de DNS/rede no meio de dezenas de clones abortava todo o setup.
+    local _tries=0
+    until git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$clone_dir" 2>/dev/null; do
+        _tries=$((_tries+1))
+        [[ $_tries -ge 4 ]] && fail "Falha ao clonar $SKILL_REPO para skill ${skill_name} (4 tentativas)."
+        warn "Clone de '${skill_name}' falhou (tentativa ${_tries}/4) — possível hiccup de DNS/rede. Retentando em 5s..."
+        rm -rf "$clone_dir"; sleep 5
+    done
     cd "$clone_dir"
     git sparse-checkout set "skills/${skill_name}" "skills/_lib"
     mkdir -p "${HOME}/.openclaw/workspace/skills"
@@ -1402,6 +1417,17 @@ step "13/13 — Cron jobs e diagnóstico"
 SCRIPTS_DIR="$SKILL_DEST/scripts"
 PROMPTS_DIR="$SKILL_DEST/prompts"
 
+# Aguarda o gateway ficar pronto antes de adicionar crons (senão 'openclaw cron add'
+# falha com "Gateway not yet ready to accept connections" e abortava o setup).
+info "Aguardando o gateway OpenClaw ficar pronto para aceitar comandos..."
+for _i in $(seq 1 24); do
+    if openclaw cron list --json >/dev/null 2>&1; then
+        ok "Gateway pronto."
+        break
+    fi
+    sleep 5
+done
+
 [[ -f "$CRON_IDS_FILE" ]] && source "$CRON_IDS_FILE" 2>/dev/null || true
 
 _add_cron_if_missing() {
@@ -1433,13 +1459,10 @@ except:
 " 2>/dev/null || echo "")
 
     if [[ -z "$new_id" ]] || ! echo "$new_id" | grep -qP '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'; then
-        fail "Não foi possível capturar UUID válido para '${var_name}'.
-Saída:
-$(eval "$cron_cmd" 2>&1 | head -20)
-
-Verifique:
-  • openclaw gateway status
-  • openclaw cron add --help"
+        # NÃO-FATAL: os crons são features proativas (alertas, insights), não o núcleo do agente.
+        # Um cron que falha (ex: gateway ainda inicializando) não deve abortar a instalação inteira.
+        warn "Não foi possível adicionar o cron '${var_name}' (gateway pode estar inicializando). Pulando — adicione depois com 'openclaw cron add' ou re-rodando o setup."
+        return
     fi
 
     export "$var_name"="$new_id"
