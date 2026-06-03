@@ -14,6 +14,9 @@ set -euo pipefail
 # Constantes
 # ─────────────────────────────────────────────────────────────────────────────
 SKILL_REPO="${SKILL_REPO:-https://github.com/MindOpsTeam/agente-cfo.git}"
+# Ref do repo (branch ou tag). Default 'main'; o instalador do painel passa uma
+# tag de release fixa (ex: REPO_REF=v1.2.0) pra instalação reproduzível.
+REPO_REF="${REPO_REF:-main}"
 SKILL_DEST="${HOME}/.openclaw/workspace/skills/agente-cfo"
 ENV_FILE="${HOME}/.agente-cfo/.env"
 INSTANCE_ENV="${HOME}/.agente-cfo/instance.env"
@@ -35,6 +38,36 @@ fail() {
     exit 1
 }
 
+# Escapa um valor pra ser seguro DENTRO de "double quotes" tanto no `source` do
+# bash quanto no EnvironmentFile= do systemd. Sem isso, um valor com espaço ou
+# caractere especial (ex: CFO_CRM_NAME="rd station") faz o bash tentar executar
+# o nome da variável como comando → `line N: VAR: command not found`.
+_env_escape() {
+    local v="${1-}"
+    v="${v//$'\r'/}"      # remove CR de paste do Windows
+    v="${v//$'\n'/ }"     # newline nunca quebra a linha do .env
+    v="${v//\\/\\\\}"     # \  -> \\
+    v="${v//\"/\\\"}"     # "  -> \"
+    v="${v//\$/\\\$}"     # \$ -> literal (não expande no source)
+    v="${v//\`/\\\`}"     # `  -> literal
+    printf '%s' "$v"
+}
+
+# Faz source de um .env de forma defensiva. Se o arquivo estiver corrompido
+# (ex: .env de uma versão antiga, sem aspas), faz backup em .broken e segue sem
+# abortar — o PASSO 8 regrava no formato correto. Evita o crash em re-execução.
+_safe_source_env() {
+    local f="$1"
+    [[ -f "$f" ]] || return 0
+    if bash -ec 'set -a; source "$1"' _ "$f" >/dev/null 2>&1; then
+        set -a; source "$f"; set +a
+    else
+        warn "$f corrompido (provável .env antigo sem aspas) — backup em ${f}.broken; será regenerado."
+        cp -f "$f" "${f}.broken" 2>/dev/null || true
+        rm -f "$f"
+    fi
+}
+
 ask() {
     local var_name="$1" description="$2" default_val="${3:-}"
     if [[ -n "${!var_name:-}" ]]; then
@@ -50,7 +83,7 @@ ask() {
             read -rp "$(echo -e "${CYAN}?${NC} ${prompt_str}: ")" value </dev/tty
         else
             fail "Setup precisa rodar interativamente. Baixe o script primeiro:
-  curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/setup.sh -o /tmp/cfo-setup.sh
+  curl -fsSL https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/${REPO_REF}/install/setup.sh -o /tmp/cfo-setup.sh
   bash /tmp/cfo-setup.sh"
         fi
         value="${value:-$default_val}"
@@ -83,13 +116,11 @@ chmod 700 "${STATE_DIR}/memory"
 # Reutiliza config existente em re-execução (não regera tokens)
 if [[ -f "$ENV_FILE" ]]; then
     info "Detectado $ENV_FILE — reutilizando config existente (re-execução)."
-    # shellcheck source=/dev/null
-    set -a; source "$ENV_FILE"; set +a
 fi
-if [[ -f "$INSTANCE_ENV" ]]; then
-    # shellcheck source=/dev/null
-    set -a; source "$INSTANCE_ENV"; set +a
-fi
+# shellcheck source=/dev/null
+_safe_source_env "$ENV_FILE"
+# shellcheck source=/dev/null
+_safe_source_env "$INSTANCE_ENV"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 1: Pre-flight
@@ -432,7 +463,7 @@ if [[ ! -f "${_WS_ROOT}/AGENTS.md" ]] || grep -q "Workspace do Agente CFO" "${_W
     if [[ $_APPLIED -eq 0 ]]; then
         # Fallback 1: clone rápido apenas do template
         _TMPL_CLONE=$(mktemp -d /tmp/agente-cfo-tmpl-XXXXX)
-        git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_CLONE" 2>/dev/null && \
+        git clone --depth 1 --branch "$REPO_REF" --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_CLONE" 2>/dev/null && \
             (cd "$_TMPL_CLONE" && git sparse-checkout set "install/templates") && \
             [[ -f "$_TMPL_CLONE/install/templates/AGENTS.md" ]] && \
             _apply_agents_template "$_TMPL_CLONE/install/templates/AGENTS.md" && _APPLIED=1
@@ -442,7 +473,7 @@ if [[ ! -f "${_WS_ROOT}/AGENTS.md" ]] || grep -q "Workspace do Agente CFO" "${_W
     if [[ $_APPLIED -eq 0 ]]; then
         # Fallback 2: curl raw do GitHub (funciona mesmo sem git sparse-checkout disponível)
         info "Tentando AGENTS.md via curl raw do GitHub..."
-        _RAW_AGENTS_URL="https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/templates/AGENTS.md"
+        _RAW_AGENTS_URL="https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/${REPO_REF}/install/templates/AGENTS.md"
         if curl -fsSL --max-time 20 "$_RAW_AGENTS_URL" -o "${_WS_ROOT}/AGENTS.md" 2>/dev/null; then
             # Valida que o arquivo baixado é o template PhD (não uma página de erro HTML)
             if grep -qiE 'Marcos|CFO|PhD|Planejador|Conciliação' "${_WS_ROOT}/AGENTS.md" 2>/dev/null; then
@@ -643,23 +674,26 @@ step "8/13 — Persistindo configuração"
 
 mkdir -p "$(dirname "$ENV_FILE")"
 
+# Todos os valores vão entre "aspas" e escapados via _env_escape: seguro tanto
+# pro `source` do bash quanto pro EnvironmentFile= do systemd (mesmo com espaços
+# ou caracteres especiais). NUNCA gravar valor cru aqui.
 cat > "$ENV_FILE" << EOF
 # Agente CFO — gerado por setup.sh em $(date '+%Y-%m-%d %H:%M:%S')
-OMIE_APP_KEY=${OMIE_APP_KEY}
-OMIE_APP_SECRET=${OMIE_APP_SECRET}
-CFO_WHATSAPP_TO=${CFO_WHATSAPP_TO}
-ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-LLM_BUDGET_BRL=${LLM_BUDGET_BRL}
-PANEL_BASE_URL=${PANEL_BASE_URL}
-PANEL_TOKEN=${PANEL_TOKEN}
-INGRESS_URL=
-HOOKS_TOKEN=${HOOKS_TOKEN}
-CFO_ERP_NAME=${CFO_ERP_NAME:-omie}
-CFO_CRM_NAME=${CFO_CRM_NAME:-nenhum}
-CFO_COBRANCA_NAME=${CFO_COBRANCA_NAME:-nenhum}
-CFO_ECOMMERCE_NAME=${CFO_ECOMMERCE_NAME:-nenhum}
-OMIE_SKILL_PATH=${HOME}/.openclaw/workspace/skills/omie
-INSTANCE_ID=
+OMIE_APP_KEY="$(_env_escape "${OMIE_APP_KEY-}")"
+OMIE_APP_SECRET="$(_env_escape "${OMIE_APP_SECRET-}")"
+CFO_WHATSAPP_TO="$(_env_escape "${CFO_WHATSAPP_TO-}")"
+ANTHROPIC_API_KEY="$(_env_escape "${ANTHROPIC_API_KEY-}")"
+LLM_BUDGET_BRL="$(_env_escape "${LLM_BUDGET_BRL-}")"
+PANEL_BASE_URL="$(_env_escape "${PANEL_BASE_URL-}")"
+PANEL_TOKEN="$(_env_escape "${PANEL_TOKEN-}")"
+INGRESS_URL=""
+HOOKS_TOKEN="$(_env_escape "${HOOKS_TOKEN-}")"
+CFO_ERP_NAME="$(_env_escape "${CFO_ERP_NAME:-omie}")"
+CFO_CRM_NAME="$(_env_escape "${CFO_CRM_NAME:-nenhum}")"
+CFO_COBRANCA_NAME="$(_env_escape "${CFO_COBRANCA_NAME:-nenhum}")"
+CFO_ECOMMERCE_NAME="$(_env_escape "${CFO_ECOMMERCE_NAME:-nenhum}")"
+OMIE_SKILL_PATH="$(_env_escape "${HOME}/.openclaw/workspace/skills/omie")"
+INSTANCE_ID=""
 EOF
 chmod 600 "$ENV_FILE"
 ok "Config salva em $ENV_FILE (chmod 600)."
@@ -1112,7 +1146,7 @@ fi
 
 # Atualizar INGRESS_URL no .env agora que temos a URL real
 grep -v "^INGRESS_URL=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
-echo "INGRESS_URL=${INGRESS_URL}" >> "$ENV_FILE"
+echo "INGRESS_URL=\"$(_env_escape "${INGRESS_URL-}")\"" >> "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 ok "INGRESS_URL persistida no .env."
 
@@ -1137,7 +1171,7 @@ _install_skill_from_repo() {
     rm -rf "$clone_dir"
     # Retry: um hiccup transitório de DNS/rede no meio de dezenas de clones abortava todo o setup.
     local _tries=0
-    until git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$clone_dir" 2>/dev/null; do
+    until git clone --depth 1 --branch "$REPO_REF" --filter=blob:none --sparse "$SKILL_REPO" "$clone_dir" 2>/dev/null; do
         _tries=$((_tries+1))
         [[ $_tries -ge 4 ]] && fail "Falha ao clonar $SKILL_REPO para skill ${skill_name} (4 tentativas)."
         warn "Clone de '${skill_name}' falhou (tentativa ${_tries}/4) — possível hiccup de DNS/rede. Retentando em 5s..."
@@ -1232,7 +1266,7 @@ _apply_agents_phd() {
 
 # Tentativa 1: git sparse-checkout
 _TMPL_SRC=$(mktemp -d /tmp/cfo-agents-phd-XXXXX)
-if git clone --depth 1 --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_SRC" 2>/dev/null; then
+if git clone --depth 1 --branch "$REPO_REF" --filter=blob:none --sparse "$SKILL_REPO" "$_TMPL_SRC" 2>/dev/null; then
     (cd "$_TMPL_SRC" && git sparse-checkout set "install/templates" 2>/dev/null)
     _apply_agents_phd "$_TMPL_SRC/install/templates/AGENTS.md" || true
 fi
@@ -1241,7 +1275,7 @@ rm -rf "$_TMPL_SRC" 2>/dev/null || true
 # Tentativa 2: curl raw GitHub (fallback sem git)
 if [[ $_AGENTS_PHD_APPLIED -eq 0 ]]; then
     info "Baixando AGENTS.md PhD via curl raw (fallback)..."
-    _RAW_URL="https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/main/install/templates/AGENTS.md"
+    _RAW_URL="https://raw.githubusercontent.com/MindOpsTeam/agente-cfo/${REPO_REF}/install/templates/AGENTS.md"
     _TMP_AGENTS=$(mktemp /tmp/agents-phd-XXXXX.md)
     if curl -fsSL --max-time 20 "$_RAW_URL" -o "$_TMP_AGENTS" 2>/dev/null; then
         _apply_agents_phd "$_TMP_AGENTS" || warn "AGENTS.md baixado via curl não parece válido."
@@ -1411,11 +1445,11 @@ Verifique:
 fi
 
 INSTANCE_ID="$NEW_INSTANCE_ID"
-echo "INSTANCE_ID=${INSTANCE_ID}" > "$INSTANCE_ENV"
+echo "INSTANCE_ID=\"$(_env_escape "${INSTANCE_ID-}")\"" > "$INSTANCE_ENV"
 
 # Atualizar .env com INSTANCE_ID
 grep -v "^INSTANCE_ID=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
-echo "INSTANCE_ID=${INSTANCE_ID}" >> "$ENV_FILE"
+echo "INSTANCE_ID=\"$(_env_escape "${INSTANCE_ID-}")\"" >> "$ENV_FILE"
 chmod 600 "$ENV_FILE"
 
 ok "Instância registrada: $INSTANCE_ID"

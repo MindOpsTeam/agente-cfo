@@ -22,13 +22,26 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 ok()  { echo "✓ $*"; }
 warn(){ echo "⚠ $*" >&2; }
 
-log "=== Agente CFO Self-Update (Sprint 26) ==="
-log "Repo: ${REPO_URL}"
+# Ref a atualizar. Default = última *release* publicada (promoção controlada:
+# um push ruim no main NÃO chega aos clientes; só uma release validada chega).
+# Override: REPO_REF=v1.2.0 (pin) ou REPO_REF=main (bleeding edge).
+REPO_REF="${REPO_REF:-}"
+if [[ -z "${REPO_REF}" ]]; then
+    REPO_REF=$(curl -fsSL https://api.github.com/repos/MindOpsTeam/agente-cfo/releases/latest 2>/dev/null \
+        | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 \
+        | sed -E 's/.*"([^"]+)"$/\1/')
+fi
+[[ -z "${REPO_REF}" ]] && { warn "Nenhuma release publicada encontrada — usando main."; REPO_REF=main; }
 
-# ── 1. Clone shallow ──────────────────────────────────────────────────────────
-log "Clonando repositório..."
+log "=== Agente CFO Self-Update (Sprint 26) ==="
+log "Repo: ${REPO_URL}  •  Ref: ${REPO_REF}"
+
+# ── 1. Clone shallow da ref alvo (fallback main se a tag não resolver) ────────
+log "Clonando repositório (${REPO_REF})..."
 rm -rf "${CLONE_DIR}"
-git clone --depth 1 --quiet "${REPO_URL}" "${CLONE_DIR}"
+git clone --depth 1 --branch "${REPO_REF}" --quiet "${REPO_URL}" "${CLONE_DIR}" 2>/dev/null \
+    || { warn "Clone de '${REPO_REF}' falhou — fallback para main."; \
+         git clone --depth 1 --quiet "${REPO_URL}" "${CLONE_DIR}"; }
 ok "Clone concluído em ${CLONE_DIR}"
 
 # ── 2. Atualiza _lib ──────────────────────────────────────────────────────────
