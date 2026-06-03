@@ -74,6 +74,16 @@ ask() {
         ok "$description: já definido."
         return
     fi
+    # NONINTERACTIVE (instalação dirigida pelo painel): nunca pergunta. Usa o
+    # default se houver; senão falha explícito nomeando a variável que faltou.
+    if [[ "${NONINTERACTIVE:-}" == "1" ]]; then
+        if [[ -n "$default_val" ]]; then
+            export "$var_name"="$default_val"
+            ok "$description: usando padrão ($default_val)."
+            return
+        fi
+        fail "NONINTERACTIVE: a variável obrigatória '$var_name' ($description) não foi fornecida pelo painel. Gere um novo link de instalação no onboarding."
+    fi
     local prompt_str="$description"
     [[ -n "$default_val" ]] && prompt_str="$description [${default_val}]"
     local value=""
@@ -305,8 +315,12 @@ export OPENCLAW_NO_RESPAWN=1
 # ─────────────────────────────────────────────────────────────────────────────
 step "3/13 — Credenciais"
 
-ask "OMIE_APP_KEY"      "Omie App Key"
-ask "OMIE_APP_SECRET"   "Omie App Secret"
+# Credenciais do ERP Omie só são pedidas quando o ERP é Omie. Para outros ERPs as
+# credenciais sincronizam do painel (Vault) via credentials-sync — não trava aqui.
+if [[ "${CFO_ERP_NAME:-omie}" == "omie" ]]; then
+    ask "OMIE_APP_KEY"      "Omie App Key"
+    ask "OMIE_APP_SECRET"   "Omie App Secret"
+fi
 ask "CFO_WHATSAPP_TO"   "WhatsApp destino dos alertas (ex: +5511999999999)"
 ask "ANTHROPIC_API_KEY" "Anthropic API Key (sk-ant-...)"
 ask "LLM_BUDGET_BRL"    "Orçamento mensal LLM em BRL" "50"
@@ -325,6 +339,12 @@ ask_choice() {
     local var_name="$1" description="$2" options="$3" default="$4"
     if [[ -n "${!var_name:-}" ]]; then
         ok "$description: ${!var_name}"
+        return
+    fi
+    # NONINTERACTIVE: usa o default sem perguntar (defaults são seguros: omie/nenhum).
+    if [[ "${NONINTERACTIVE:-}" == "1" ]]; then
+        export "$var_name"="$default"
+        ok "$description: $default (padrão)"
         return
     fi
     echo ""
@@ -361,31 +381,32 @@ ask "PANEL_BASE_URL" \
     warn "PANEL_BASE_URL não parece uma URL Supabase válida. Continuando."
 PANEL_BASE_URL="${PANEL_BASE_URL%/}"
 
-if [[ -z "${PANEL_TOKEN:-}" ]]; then
+if [[ -n "${PANEL_TOKEN:-}" ]]; then
+    # Veio do painel (.install_env.sh): o painel já conhece esse token (guardado no
+    # DB / secret), então NÃO há nada pra configurar à mão — instalação ponta-a-ponta.
+    ok "PANEL_TOKEN recebido do painel — sem configuração manual."
+else
+    # Instalação manual (curl direto, sem link do painel): geramos e o usuário
+    # precisa colar o token como secret pra VPS conseguir falar com o painel.
     PANEL_TOKEN=$(openssl rand -hex 32)
     ok "PANEL_TOKEN gerado."
-else
-    ok "PANEL_TOKEN já definido via ambiente."
-fi
-
-echo ""
-echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${YELLOW}║  ⚠️  AÇÃO NECESSÁRIA — Configure o PANEL_TOKEN no Supabase  ║${NC}"
-echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo "  1. Abra: ${PANEL_BASE_URL/functions\/v1/} → Settings → Edge Functions"
-echo "  2. Clique em 'Add new secret'"
-echo "  3. Name:  PANEL_TOKEN"
-echo "  4. Value: ${PANEL_TOKEN}"
-echo ""
-echo -e "${YELLOW}  ⚠️  Sem esse secret, a VPS não consegue se comunicar com o painel.${NC}"
-echo ""
-# /dev/tty: sob `curl | bash` um `read` simples consumiria uma linha do script
-# (não pausa de verdade). Em modo NONINTERACTIVE seguimos sem bloquear.
-if [[ "${NONINTERACTIVE:-}" != "1" && -r /dev/tty ]]; then
-    read -rp "Pressione ENTER após configurar o secret no Supabase..." </dev/tty
-else
-    warn "NONINTERACTIVE — não vou pausar. Garanta que o secret PANEL_TOKEN está configurado no Supabase ANTES de continuar."
+    echo ""
+    echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${YELLOW}║  ⚠️  AÇÃO NECESSÁRIA — Configure o PANEL_TOKEN no Supabase  ║${NC}"
+    echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "  1. Abra: ${PANEL_BASE_URL/functions\/v1/} → Settings → Edge Functions"
+    echo "  2. Clique em 'Add new secret'"
+    echo "  3. Name:  PANEL_TOKEN"
+    echo "  4. Value: ${PANEL_TOKEN}"
+    echo ""
+    echo -e "${YELLOW}  ⚠️  Sem esse secret, a VPS não consegue se comunicar com o painel.${NC}"
+    echo ""
+    if [[ -r /dev/tty ]]; then
+        read -rp "Pressione ENTER após configurar o secret no Supabase..." </dev/tty
+    else
+        warn "Sem terminal — garanta o secret PANEL_TOKEN no Supabase antes de continuar."
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
