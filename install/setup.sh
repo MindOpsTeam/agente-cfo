@@ -175,8 +175,9 @@ _ensure_node22() {
         return
     fi
 
-    local _ans
-    read -rp "$(echo -e "${CYAN}?${NC} Posso instalar Node 22 LTS via apt? (S/n): ")" _ans
+    local _ans="S"
+    # /dev/tty: idem ask_choice — evita ler a resposta do corpo do script via pipe.
+    [[ -r /dev/tty ]] && read -rp "$(echo -e "${CYAN}?${NC} Posso instalar Node 22 LTS via apt? (S/n): ")" _ans </dev/tty
     _ans="${_ans:-S}"
     if [[ "$_ans" =~ ^[Ss]$ ]]; then
         _install_node22
@@ -329,7 +330,17 @@ ask_choice() {
     echo ""
     info "$description"
     info "Opcoes: $options"
-    read -rp "$(echo -e "${CYAN}?${NC} Escolha (vazio = $default): ")" _choice
+    local _choice=""
+    # Lê de /dev/tty: via `curl | bash` o stdin é o PRÓPRIO script — sem isso o
+    # `read` consome as PRÓXIMAS LINHAS do script como se fossem a resposta, e
+    # CFO_CRM_NAME acaba virando o texto de uma linha de código → o clone da skill
+    # tenta clonar `ask_choice "..."` e quebra com `fatal: especifique diretórios`.
+    if [[ -r /dev/tty ]]; then
+        read -rp "$(echo -e "${CYAN}?${NC} Escolha (vazio = $default): ")" _choice </dev/tty
+    else
+        info "Sem terminal interativo — usando padrão: $default"
+    fi
+    _choice="${_choice//[$'\r\n\t ']/}"   # nome de skill é um token: sem espaço/CR/LF
     export "$var_name"="${_choice:-$default}"
 }
 
@@ -369,7 +380,13 @@ echo "  4. Value: ${PANEL_TOKEN}"
 echo ""
 echo -e "${YELLOW}  ⚠️  Sem esse secret, a VPS não consegue se comunicar com o painel.${NC}"
 echo ""
-read -rp "Pressione ENTER após configurar o secret no Supabase..."
+# /dev/tty: sob `curl | bash` um `read` simples consumiria uma linha do script
+# (não pausa de verdade). Em modo NONINTERACTIVE seguimos sem bloquear.
+if [[ "${NONINTERACTIVE:-}" != "1" && -r /dev/tty ]]; then
+    read -rp "Pressione ENTER após configurar o secret no Supabase..." </dev/tty
+else
+    warn "NONINTERACTIVE — não vou pausar. Garanta que o secret PANEL_TOKEN está configurado no Supabase ANTES de continuar."
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 5: Gerar HOOKS_TOKEN
