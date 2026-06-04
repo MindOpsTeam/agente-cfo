@@ -68,6 +68,56 @@ _safe_source_env() {
     fi
 }
 
+# Contrato painel→instalador (painel "burro"): o painel manda apenas o JSON do
+# onboarding em base64 (CFO_ONBOARDING_B64). TODO o mapeamento nome-de-variável
+# mora AQUI (central) — assim, mudar nomes nunca exige atualizar o painel de um
+# cliente. Env explícito tem prioridade (instalação manual / re-execução).
+_ONBOARDING_PARSER='import sys, json, re
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+def sh(v):
+    s = str(v).replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$").replace("`", "\\`")
+    return "\"" + s + "\""
+SKILL = {"rdstation": "rd-station"}
+def skill(n): return SKILL.get(n, n)
+out = []
+def put(k, v):
+    if v not in (None, ""):
+        out.append("export %s=%s" % (k, sh(v)))
+if d.get("anthropic_key"): put("ANTHROPIC_API_KEY", d["anthropic_key"])
+if d.get("whatsapp_phone"): put("CFO_WHATSAPP_TO", d["whatsapp_phone"])
+erp = d.get("erp") or {}
+if erp.get("name") and erp["name"] != "none":
+    put("CFO_ERP_NAME", skill(erp["name"]))
+    pref = re.sub(r"[^A-Z0-9]", "_", erp["name"].upper())
+    for k, v in (erp.get("credentials") or {}).items():
+        put("%s_%s" % (pref, k.upper()), v)
+def nn(sec):
+    s = d.get(sec) or {}; n = s.get("name")
+    return skill(n) if (n and n != "none") else "nenhum"
+put("CFO_CRM_NAME", nn("crm"))
+put("CFO_COBRANCA_NAME", nn("billing"))
+put("CFO_ECOMMERCE_NAME", nn("ecommerce"))
+print("\n".join(out))'
+
+_load_onboarding() {
+    [[ -n "${CFO_ONBOARDING_B64:-}" ]] || return 0
+    command -v python3 >/dev/null 2>&1 || { warn "python3 ausente — não consegui ler o onboarding."; return 0; }
+    local out
+    out=$(printf '%s' "$CFO_ONBOARDING_B64" | base64 -d 2>/dev/null | python3 -c "$_ONBOARDING_PARSER" 2>/dev/null) || true
+    [[ -n "$out" ]] || { warn "CFO_ONBOARDING_B64 ilegível — seguindo sem presets."; return 0; }
+    local line var
+    while IFS= read -r line; do
+        [[ "$line" == export\ * ]] || continue
+        var="${line#export }"; var="${var%%=*}"
+        [[ -n "${!var:-}" ]] && continue   # env explícito tem prioridade
+        eval "$line"
+    done <<< "$out"
+    ok "Dados do onboarding carregados do painel."
+}
+
 ask() {
     local var_name="$1" description="$2" default_val="${3:-}"
     if [[ -n "${!var_name:-}" ]]; then
@@ -131,6 +181,10 @@ fi
 _safe_source_env "$ENV_FILE"
 # shellcheck source=/dev/null
 _safe_source_env "$INSTANCE_ENV"
+
+# Presets do painel (CFO_ONBOARDING_B64) → variáveis internas. Depois do source do
+# .env pra que, em re-execução, o que já está no .env tenha prioridade.
+_load_onboarding
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 1: Pre-flight
