@@ -118,6 +118,72 @@ _load_onboarding() {
     ok "Dados do onboarding carregados do painel."
 }
 
+# Instala o serviço que registra a instância no painel em segundo plano, tentando
+# a cada 2 min até conseguir (auto-cura quando PANEL_TOKEN/PANEL_BASE_URL ficam ok).
+# Ao registrar: persiste INSTANCE_ID no .env, reinicia os daemons e se desliga.
+_install_register_retry_service() {
+    local script="${STATE_DIR}/register_retry.sh"
+    cat > "$script" <<'RETRY'
+#!/usr/bin/env bash
+set -u
+STATE_DIR="$HOME/.agente-cfo"
+ENV_FILE="$STATE_DIR/.env"
+INSTANCE_ENV="$STATE_DIR/instance.env"
+BODY_FILE="$STATE_DIR/register_body.json"
+while true; do
+    INSTANCE_ID=""; PANEL_BASE_URL=""; PANEL_TOKEN=""
+    [[ -f "$ENV_FILE" ]] && source "$ENV_FILE" 2>/dev/null || true
+    if [[ -n "${INSTANCE_ID:-}" ]]; then
+        systemctl disable --now cfo-register-retry 2>/dev/null || true
+        exit 0
+    fi
+    if [[ -n "${PANEL_BASE_URL:-}" && -n "${PANEL_TOKEN:-}" && -f "$BODY_FILE" ]]; then
+        RESP=$(curl -s --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
+            -H "Content-Type: application/json" -H "X-Panel-Token: ${PANEL_TOKEN}" \
+            --data-binary "@${BODY_FILE}" 2>/dev/null)
+        IID=$(printf '%s' "$RESP" | python3 -c "
+import sys, json
+try: print(json.loads(sys.stdin.read()).get('instance_id',''))
+except: print('')
+" 2>/dev/null || echo "")
+        if [[ -n "$IID" ]]; then
+            echo "INSTANCE_ID=\"$IID\"" > "$INSTANCE_ENV"
+            grep -v '^INSTANCE_ID=' "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null && mv "$ENV_FILE.tmp" "$ENV_FILE"
+            echo "INSTANCE_ID=\"$IID\"" >> "$ENV_FILE"
+            chmod 600 "$ENV_FILE" 2>/dev/null || true
+            for d in cfo-proactive cfo-automation-engine cfo-supabase-sync cfo-credentials-sync cfo-metrics-publisher cfo-alerts-checker; do
+                systemctl restart "$d" 2>/dev/null || true
+            done
+            logger -t cfo-register-retry "Instância registrada: $IID" 2>/dev/null || true
+            systemctl disable --now cfo-register-retry 2>/dev/null || true
+            exit 0
+        fi
+    fi
+    sleep 120
+done
+RETRY
+    chmod +x "$script" 2>/dev/null || true
+    cat > /etc/systemd/system/cfo-register-retry.service <<UNIT
+[Unit]
+Description=Agente CFO - retry de registro no painel
+After=network.target
+
+[Service]
+Type=simple
+User=${USER:-root}
+Environment=HOME=${HOME}
+ExecStart=/usr/bin/env bash ${script}
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl daemon-reload 2>/dev/null || true
+    systemctl enable --now cfo-register-retry 2>/dev/null || { warn "Não consegui ativar cfo-register-retry."; return 1; }
+    return 0
+}
+
 ask() {
     local var_name="$1" description="$2" default_val="${3:-}"
     if [[ -n "${!var_name:-}" ]]; then
@@ -1520,38 +1586,49 @@ REGISTER_BODY=$(printf \
     '{"hostname":"%s","openclaw_version":"%s","agente_cfo_version":"%s","ingress_url":"%s","hooks_token":"%s","openclaw_dashboard_token":"%s"}' \
     "$(hostname)" "$OPENCLAW_VER" "$AGENTE_CFO_VER" "${INGRESS_URL:-}" "$HOOKS_TOKEN" "$OPENCLAW_DASHBOARD_TOKEN")
 
-REGISTER_RESP=$(curl -s --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
-    -H "Content-Type: application/json" \
-    -H "X-Panel-Token: ${PANEL_TOKEN}" \
-    -d "$REGISTER_BODY")
+# Salva a payload pra o serviço de retry reaproveitar exatamente a mesma.
+REGISTER_BODY_FILE="${STATE_DIR}/register_body.json"
+printf '%s' "$REGISTER_BODY" > "$REGISTER_BODY_FILE"
+chmod 600 "$REGISTER_BODY_FILE" 2>/dev/null || true
 
-NEW_INSTANCE_ID=$(echo "$REGISTER_RESP" | python3 -c "
+_persist_instance_id() {
+    local iid="$1"
+    echo "INSTANCE_ID=\"$(_env_escape "$iid")\"" > "$INSTANCE_ENV"
+    grep -v "^INSTANCE_ID=" "$ENV_FILE" > "${ENV_FILE}.tmp" 2>/dev/null && mv "${ENV_FILE}.tmp" "$ENV_FILE"
+    echo "INSTANCE_ID=\"$(_env_escape "$iid")\"" >> "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+}
+
+# RESILIÊNCIA: o registro NÃO aborta mais a instalação. Tenta inline (3x p/ hiccup
+# de rede); se não der, segue e instala um serviço (cfo-register-retry) que tenta
+# sozinho a cada 2 min até o PANEL_TOKEN/PANEL_BASE_URL estarem certos — então
+# registra, persiste o INSTANCE_ID, reinicia os daemons e se desliga.
+INSTANCE_ID=""
+REGISTER_RESP=""
+for _try in 1 2 3; do
+    REGISTER_RESP=$(curl -s --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
+        -H "Content-Type: application/json" \
+        -H "X-Panel-Token: ${PANEL_TOKEN}" \
+        --data-binary "@${REGISTER_BODY_FILE}")
+    NEW_INSTANCE_ID=$(printf '%s' "$REGISTER_RESP" | python3 -c "
 import sys, json
-try:
-    d = json.loads(sys.stdin.read())
-    print(d.get('instance_id',''))
-except:
-    print('')
+try: print(json.loads(sys.stdin.read()).get('instance_id',''))
+except: print('')
 " 2>/dev/null || echo "")
+    [[ -n "$NEW_INSTANCE_ID" ]] && { INSTANCE_ID="$NEW_INSTANCE_ID"; break; }
+    [[ $_try -lt 3 ]] && { warn "Registro no painel falhou (tentativa ${_try}/3) — retentando em 5s..."; sleep 5; }
+done
 
-if [[ -z "$NEW_INSTANCE_ID" ]]; then
-    fail "Falha ao registrar no painel.
-Resposta: $REGISTER_RESP
-Verifique:
-  • PANEL_TOKEN configurado como secret no Supabase?
-  • PANEL_BASE_URL correto?
-  • Edge function instance-register deployed?"
+if [[ -n "$INSTANCE_ID" ]]; then
+    _persist_instance_id "$INSTANCE_ID"
+    ok "Instância registrada: $INSTANCE_ID"
+else
+    warn "Não consegui registrar no painel agora (a instalação CONTINUA)."
+    warn "Resposta do painel: ${REGISTER_RESP:-<vazia>}"
+    warn "Provável causa: PANEL_TOKEN não bate com o secret do painel, ou PANEL_BASE_URL."
+    _install_register_retry_service && \
+        ok "Serviço cfo-register-retry ativo — vai registrar sozinho quando estiver tudo certo."
 fi
-
-INSTANCE_ID="$NEW_INSTANCE_ID"
-echo "INSTANCE_ID=\"$(_env_escape "${INSTANCE_ID-}")\"" > "$INSTANCE_ENV"
-
-# Atualizar .env com INSTANCE_ID
-grep -v "^INSTANCE_ID=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
-echo "INSTANCE_ID=\"$(_env_escape "${INSTANCE_ID-}")\"" >> "$ENV_FILE"
-chmod 600 "$ENV_FILE"
-
-ok "Instância registrada: $INSTANCE_ID"
 export INSTANCE_ID
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1837,7 +1914,12 @@ echo -e "${CYAN}╔════════════════════�
 echo -e "${CYAN}║              Instalação Concluída!               ║${NC}"
 echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  ${GREEN}Instance ID:${NC}  $INSTANCE_ID"
+if [[ -n "${INSTANCE_ID:-}" ]]; then
+    echo -e "  ${GREEN}Instance ID:${NC}  $INSTANCE_ID"
+else
+    echo -e "  ${YELLOW}Instance ID:${NC}  registro pendente — cfo-register-retry tentando a cada 2 min"
+    echo -e "  ${YELLOW}            ${NC}  (confira PANEL_TOKEN no painel; registra sozinho quando bater)"
+fi
 echo -e "  ${GREEN}Ingress URL:${NC}  ${INGRESS_URL:-não configurada}"
 echo -e "  ${GREEN}Doctor:${NC}       $([ $DOCTOR_EXIT -eq 0 ] && echo '✅ tudo verde' || echo '⚠️  veja acima')"
 echo ""
