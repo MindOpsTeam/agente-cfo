@@ -431,9 +431,16 @@ step "4/13 — Painel (Supabase do cliente)"
 ask "PANEL_BASE_URL" \
     "URL do seu projeto Supabase (ex: https://xxxx.supabase.co/functions/v1)"
 
-[[ "$PANEL_BASE_URL" =~ ^https://[a-z0-9]+\.supabase\.co/functions/v1 ]] || \
+# Blindagem: é comum colarem o COMANDO do instalador inteiro aqui
+# (https://xxx.supabase.co/functions/v1/setup-installer?token=... | bash).
+# Extraímos só o host Supabase e reconstruímos a base canônica /functions/v1.
+if [[ "$PANEL_BASE_URL" =~ (https://[a-z0-9-]+\.supabase\.co) ]]; then
+    PANEL_BASE_URL="${BASH_REMATCH[1]}/functions/v1"
+    ok "PANEL_BASE_URL normalizada: $PANEL_BASE_URL"
+else
     warn "PANEL_BASE_URL não parece uma URL Supabase válida. Continuando."
-PANEL_BASE_URL="${PANEL_BASE_URL%/}"
+    PANEL_BASE_URL="${PANEL_BASE_URL%/}"
+fi
 
 if [[ -n "${PANEL_TOKEN:-}" ]]; then
     # Veio do painel (.install_env.sh): o painel já conhece esse token (guardado no
