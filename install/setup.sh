@@ -138,7 +138,7 @@ while true; do
         exit 0
     fi
     if [[ -n "${PANEL_BASE_URL:-}" && -n "${PANEL_TOKEN:-}" && -f "$BODY_FILE" ]]; then
-        RESP=$(curl -s --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
+        RESP=$(curl -s -L --post301 --post302 --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
             -H "Content-Type: application/json" -H "X-Panel-Token: ${PANEL_TOKEN}" \
             --data-binary "@${BODY_FILE}" 2>/dev/null)
         IID=$(printf '%s' "$RESP" | python3 -c "
@@ -194,13 +194,15 @@ UNIT
 _verify_panel_token() {
     [[ -n "${PANEL_BASE_URL:-}" && -n "${PANEL_TOKEN:-}" ]] || return 2
     local code
-    code=$(curl -s -m 15 -o /dev/null -w "%{http_code}" \
+    # -L: segue redirect (301/302 do Cloudflare/Supabase) até a função real, senão
+    # um 3xx seria confundido com "token aceito". %{http_code} é o código FINAL.
+    code=$(curl -sL -m 15 -o /dev/null -w "%{http_code}" \
         "${PANEL_BASE_URL}/chat-pending-lookup" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" 2>/dev/null || echo "000")
     case "$code" in
-        401)         return 1 ;;
-        000|404|405) return 2 ;;
-        *)           return 0 ;;
+        401)                 return 1 ;;   # token não bate
+        000|301|302|404|405) return 2 ;;   # não deu pra validar / URL redireciona
+        *)                   return 0 ;;   # função respondeu (200/400) = token aceito
     esac
 }
 
@@ -1702,7 +1704,9 @@ _persist_instance_id() {
 INSTANCE_ID=""
 REGISTER_RESP=""
 for _try in 1 2 3; do
-    REGISTER_RESP=$(curl -s --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
+    # -L --post301/302: segue o redirect do Cloudflare/Supabase preservando o POST
+    # (sem isso, um 301 devolve HTML e o registro falha mesmo com token correto).
+    REGISTER_RESP=$(curl -s -L --post301 --post302 --max-time 30 -X POST "${PANEL_BASE_URL}/instance-register" \
         -H "Content-Type: application/json" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" \
         --data-binary "@${REGISTER_BODY_FILE}")
