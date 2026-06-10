@@ -167,6 +167,9 @@ RETRY
 [Unit]
 Description=Agente CFO - retry de registro no painel
 After=network.target
+# Sem rate-limit de restart: o serviço pode reiniciar quantas vezes precisar até
+# o token bater (senão o systemd o marcaria 'failed' e pararia de tentar).
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -409,18 +412,15 @@ fi
 npm install -g openclaw@latest 2>&1 | tail -3 || fail "Falha ao instalar OpenClaw."
 ok "OpenClaw: $(openclaw --version 2>/dev/null | head -1)"
 
-# COMPAT-1: Após npm update, re-detectar versão (pode ter atualizado)
+# COMPAT-1: Após npm update, re-detectar versão (pode ter atualizado).
+# Reusa _oc_semver_gte (definida no PASSO 1) — só reatualiza os globais de versão.
 _OC_VERSION=$(openclaw --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "0.0.0")
+[[ -z "$_OC_VERSION" || "$_OC_VERSION" == "0.0.0" ]] && \
+    fail "OpenClaw não respondeu a 'openclaw --version' após a instalação.
+Verifique o npm global:  npm install -g openclaw@latest  (e o PATH do node)."
 _OC_MAJOR=$(echo "$_OC_VERSION" | cut -d. -f1)
 _OC_MINOR=$(echo "$_OC_VERSION" | cut -d. -f2)
 _OC_PATCH=$(echo "$_OC_VERSION" | cut -d. -f3)
-_oc_semver_gte() {
-    local maj="$1" min="$2" pat="${3:-0}"
-    [[ "$_OC_MAJOR" -gt "$maj" ]] && return 0
-    [[ "$_OC_MAJOR" -eq "$maj" && "$_OC_MINOR" -gt "$min" ]] && return 0
-    [[ "$_OC_MAJOR" -eq "$maj" && "$_OC_MINOR" -eq "$min" && "$_OC_PATCH" -ge "$pat" ]] && return 0
-    return 1
-}
 if _oc_semver_gte 2026 5 0; then
     _OC_COMPAT_MODE="2026.5"
     info "Versão pós-update: OpenClaw ${_OC_VERSION} (compat 2026.5)"
@@ -534,6 +534,12 @@ else
     # que ele seja cadastrado como secret no painel certo antes de prosseguir.
     PANEL_TOKEN=$(openssl rand -hex 32)
     ok "PANEL_TOKEN gerado."
+    echo ""
+    info "💡 Caminho recomendado (sem token manual): instale pelo LINK do painel."
+    info "   No painel → Onboarding → 'gerar link de instalação' → rode aquele comando."
+    info "   Esse fluxo injeta PANEL_TOKEN + URL juntos (sempre batem) e ativa a VPS"
+    info "   no painel automaticamente. O modo manual exige cadastrar o secret na mão."
+    echo ""
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1348,7 +1354,15 @@ fi
 grep -v "^INGRESS_URL=" "$ENV_FILE" > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
 echo "INGRESS_URL=\"$(_env_escape "${INGRESS_URL-}")\"" >> "$ENV_FILE"
 chmod 600 "$ENV_FILE"
-ok "INGRESS_URL persistida no .env."
+if [[ -n "${INGRESS_URL:-}" ]]; then
+    ok "INGRESS_URL persistida no .env."
+else
+    # A VPS ainda registra e aparece online no painel (canal VPS→painel não depende
+    # do túnel); o que fica limitado é o painel→VPS (dashboard remoto/hooks).
+    warn "Não consegui capturar a URL do túnel Cloudflare (INGRESS_URL vazia)."
+    warn "A VPS vai registrar normalmente, mas o painel não conseguirá abrir o"
+    warn "dashboard remoto até o túnel ter URL. Verifique: systemctl status cloudflared-cfo"
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 10: Instalar skills do monorepo (omie + ERP/CRM escolhidos)
@@ -1369,68 +1383,91 @@ _install_skill_from_repo() {
     info "Clonando skill '${skill_name}' do monorepo..."
     local clone_dir="/tmp/agente-cfo-skill-${skill_name}-clone"
     rm -rf "$clone_dir"
-    # Retry: um hiccup transitório de DNS/rede no meio de dezenas de clones abortava todo o setup.
+    # Retry: hiccup transitório de DNS/rede no meio de dezenas de clones. Aqui a
+    # função RETORNA erro (não aborta) — quem chama decide se é fatal (omie/agente-cfo
+    # são essenciais → || fail; as cfo-* especializadas seguem com warn).
     local _tries=0
     until git clone --depth 1 --branch "$REPO_REF" --filter=blob:none --sparse "$SKILL_REPO" "$clone_dir" 2>/dev/null; do
         _tries=$((_tries+1))
-        [[ $_tries -ge 4 ]] && fail "Falha ao clonar $SKILL_REPO para skill ${skill_name} (4 tentativas)."
+        if [[ $_tries -ge 4 ]]; then
+            warn "Falha ao clonar ${skill_name} de ${SKILL_REPO} (4 tentativas)."
+            rm -rf "$clone_dir"
+            return 1
+        fi
         warn "Clone de '${skill_name}' falhou (tentativa ${_tries}/4) — possível hiccup de DNS/rede. Retentando em 5s..."
         rm -rf "$clone_dir"; sleep 5
     done
     cd "$clone_dir"
-    git sparse-checkout set "skills/${skill_name}" "skills/_lib"
+    git sparse-checkout set "skills/${skill_name}" "skills/_lib" 2>/dev/null
     mkdir -p "${HOME}/.openclaw/workspace/skills"
-    cp -r "skills/${skill_name}" "$dest"
+    cp -r "skills/${skill_name}" "$dest" 2>/dev/null || true
     # Instalar/atualizar _lib (BaseERPClient/BaseCRMClient)
     mkdir -p "${HOME}/.openclaw/workspace/skills/_lib"
-    cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/"
+    cp -r "skills/_lib/"* "${HOME}/.openclaw/workspace/skills/_lib/" 2>/dev/null || true
     cd / && rm -rf "$clone_dir"
+
+    # Validação: sparse-checkout pode "passar" mas deixar a skill vazia. Sem SKILL.md
+    # a skill é inútil (o daemon rodaria sem script). Trata como falha de instalação.
+    if [[ ! -f "$dest/SKILL.md" ]]; then
+        warn "Skill ${skill_name} ficou incompleta (sem SKILL.md após o checkout)."
+        rm -rf "$dest" 2>/dev/null || true
+        return 1
+    fi
 
     chmod +x "$dest/scripts/"*.sh 2>/dev/null || true
     ok "Skill ${skill_name} instalada de ${SKILL_REPO}."
+    return 0
 }
 
-# Sempre instalar omie do monorepo (versão com get_balance/list_payables/etc)
-_install_skill_from_repo "omie"
+# Sempre instalar omie do monorepo (versão com get_balance/list_payables/etc).
+# Essencial: sem omie o CFO não lê o ERP → aborta com mensagem clara.
+_install_skill_from_repo "omie" || fail "Skill essencial 'omie' não pôde ser instalada (sem conexão com ${SKILL_REPO}?). Verifique a rede da VPS e rode o instalador de novo."
 
 # Instalar requirements.txt se existir
 OMIE_DEST="${HOME}/.openclaw/workspace/skills/omie"
 [[ -f "$OMIE_DEST/requirements.txt" ]] && \
     pip3 install -r "$OMIE_DEST/requirements.txt" -q 2>/dev/null || true
 
-# Instalar skill ERP escolhida (se diferente de omie)
+# Skills ERP/CRM/cobrança/e-commerce escolhidas. Não-essenciais: se a skill não
+# instalar, avisa e NÃO tenta o connect.sh (evita rodar sobre diretório vazio).
 if [[ "${CFO_ERP_NAME:-omie}" != "omie" ]]; then
-    _install_skill_from_repo "${CFO_ERP_NAME}"
-    ERP_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_ERP_NAME}"
-    bash "$ERP_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do ERP falhou — configure manualmente."
+    if _install_skill_from_repo "${CFO_ERP_NAME}"; then
+        bash "${HOME}/.openclaw/workspace/skills/${CFO_ERP_NAME}/scripts/connect.sh" || warn "connect.sh do ERP falhou — configure manualmente."
+    else
+        warn "Skill ERP '${CFO_ERP_NAME}' não instalou — pulei o connect.sh."
+    fi
 fi
 
-# Instalar skill CRM escolhida
 if [[ "${CFO_CRM_NAME:-nenhum}" != "nenhum" ]]; then
-    _install_skill_from_repo "${CFO_CRM_NAME}"
-    CRM_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_CRM_NAME}"
-    bash "$CRM_SKILL_DEST/scripts/connect.sh" || warn "connect.sh do CRM falhou — configure manualmente."
+    if _install_skill_from_repo "${CFO_CRM_NAME}"; then
+        bash "${HOME}/.openclaw/workspace/skills/${CFO_CRM_NAME}/scripts/connect.sh" || warn "connect.sh do CRM falhou — configure manualmente."
+    else
+        warn "Skill CRM '${CFO_CRM_NAME}' não instalou — pulei o connect.sh."
+    fi
 fi
 
-# Instalar skill de cobrança escolhida
 if [[ "${CFO_COBRANCA_NAME:-nenhum}" != "nenhum" ]]; then
-    _install_skill_from_repo "${CFO_COBRANCA_NAME}"
-    COBRANCA_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_COBRANCA_NAME}"
-    bash "$COBRANCA_SKILL_DEST/scripts/connect.sh" || warn "connect.sh de cobranca falhou — configure manualmente."
+    if _install_skill_from_repo "${CFO_COBRANCA_NAME}"; then
+        bash "${HOME}/.openclaw/workspace/skills/${CFO_COBRANCA_NAME}/scripts/connect.sh" || warn "connect.sh de cobranca falhou — configure manualmente."
+    else
+        warn "Skill de cobrança '${CFO_COBRANCA_NAME}' não instalou — pulei o connect.sh."
+    fi
 fi
 
-# Instalar skill de e-commerce escolhida
 if [[ "${CFO_ECOMMERCE_NAME:-nenhum}" != "nenhum" ]]; then
-    _install_skill_from_repo "${CFO_ECOMMERCE_NAME}"
-    ECOMMERCE_SKILL_DEST="${HOME}/.openclaw/workspace/skills/${CFO_ECOMMERCE_NAME}"
-    bash "$ECOMMERCE_SKILL_DEST/scripts/connect.sh" || warn "connect.sh de e-commerce falhou — configure manualmente."
+    if _install_skill_from_repo "${CFO_ECOMMERCE_NAME}"; then
+        bash "${HOME}/.openclaw/workspace/skills/${CFO_ECOMMERCE_NAME}/scripts/connect.sh" || warn "connect.sh de e-commerce falhou — configure manualmente."
+    else
+        warn "Skill de e-commerce '${CFO_ECOMMERCE_NAME}' não instalou — pulei o connect.sh."
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 11: Instalar skill agente-cfo
 # ─────────────────────────────────────────────────────────────────────────────
 step "11/13 — Skill agente-cfo"
-_install_skill_from_repo "agente-cfo"
+# Essencial: é o cérebro do Marcos (scripts de ronda, relatórios, heartbeat).
+_install_skill_from_repo "agente-cfo" || fail "Skill essencial 'agente-cfo' não pôde ser instalada (sem conexão com ${SKILL_REPO}?). Verifique a rede da VPS e rode o instalador de novo."
 chmod +x $SKILL_DEST/scripts/*.sh 2>/dev/null || true
 ok "Skill agente-cfo instalada em $SKILL_DEST"
 
@@ -1551,8 +1588,8 @@ systemctl enable --now cfo-automation-engine 2>/dev/null || warn "systemctl enab
 # NÃO desativa cfo-proactive aqui — mantém para rollback
 info "cfo-automation-engine ativado. cfo-proactive mantido (rollback disponível)."
 
-# Instalar skill supabase (Sprint 25)
-_install_skill_from_repo "supabase"
+# Instalar skill supabase (Sprint 25) — não-essencial, não aborta se falhar.
+_install_skill_from_repo "supabase" || warn "Skill 'supabase' não instalou (não-crítico)."
 chmod +x "${HOME}/.openclaw/workspace/skills/supabase/connect.sh" 2>/dev/null || true
 chmod +x "${HOME}/.openclaw/workspace/skills/supabase/doctor.sh" 2>/dev/null || true
 
@@ -1565,11 +1602,11 @@ chmod +x "${SKILL_DEST}/scripts/self_update.sh" 2>/dev/null || true
 systemctl enable --now cfo-credentials-sync 2>/dev/null || warn "systemctl enable cfo-credentials-sync falhou."
 ok "cfo-credentials-sync.service iniciado (sync de credenciais a cada ${CREDENTIALS_SYNC_INTERVAL_MIN:-3} min)."
 
-# Instalar skill evolution-api e iniciar daemon (Sprint 27)
-_install_skill_from_repo "evolution-api"
+# Instalar skill evolution-api e iniciar daemon (Sprint 27) — não-essencial.
+_install_skill_from_repo "evolution-api" || warn "Skill 'evolution-api' não instalou (não-crítico)."
 
-# Instalar skill telegram e iniciar daemon (Sprint 34)
-_install_skill_from_repo "telegram"
+# Instalar skill telegram e iniciar daemon (Sprint 34) — não-essencial.
+_install_skill_from_repo "telegram" || warn "Skill 'telegram' não instalou (não-crítico)."
 
 # Iniciar MCP warmer (Sprint 36 — redução de cold-start)
 systemctl enable --now cfo-mcp-warmer 2>/dev/null || warn "systemctl enable cfo-mcp-warmer falhou."
@@ -1860,8 +1897,10 @@ if [[ -f "$RUN_ALL_SCRIPT" ]]; then
         warn "Algum smoke test falhou — ver acima para detalhes"
 fi
 
-# ── DIST-1: Smoke pós-instalação "all-skills guaranteed" ─────────────────────
-step "DIST-1 — Smoke pós-instalação"
+# ── Verificação de conexão e instalação (as 3 garantias) ─────────────────────
+# Checa e REPORTA explicitamente: OpenClaw up, skills presentes, conexão com o
+# painel (handshake) e ativação da VPS no front (registro).
+step "Verificação de conexão e instalação"
 
 _SMOKE_PASS=0; _SMOKE_FAIL=0
 _smoke_check() {
@@ -1934,11 +1973,29 @@ else
     _smoke_check "AGENTS.md PhD" "não aplicado ou incompleto"
 fi
 
-echo ""
-if [[ $_SMOKE_FAIL -eq 0 ]]; then
-    echo -e "${GREEN}✅ Smoke pós-instalação: TUDO OK (${_SMOKE_PASS}/${_SMOKE_PASS} checks)${NC}"
+# 6. Conexão painel↔VPS (handshake: o PANEL_TOKEN é aceito pelo painel?)
+_verify_panel_token; _HS_RC=$?
+if [[ $_HS_RC -eq 0 ]]; then
+    _smoke_check "Conexão com o painel (token aceito)" "OK"
+elif [[ $_HS_RC -eq 2 ]]; then
+    _smoke_check "Conexão com o painel" "painel inacessível em ${PANEL_BASE_URL}"
 else
-    echo -e "${YELLOW}⚠️  Smoke pós-instalação: ${_SMOKE_PASS} OK / ${_SMOKE_FAIL} falha(s) — veja acima${NC}"
+    _smoke_check "Conexão com o painel" "PANEL_TOKEN não bate com o secret do painel (${PANEL_BASE_URL%/functions/v1})"
+fi
+
+# 7. Ativação da VPS no painel (instância registrada → aparece online no front?)
+if [[ -n "${INSTANCE_ID:-}" ]]; then
+    _smoke_check "VPS ativada no painel (instance_id)" "OK"
+else
+    _smoke_check "VPS ativada no painel" "registro pendente — cfo-register-retry conecta quando o token bater"
+fi
+
+echo ""
+_SMOKE_TOTAL=$((_SMOKE_PASS + _SMOKE_FAIL))
+if [[ $_SMOKE_FAIL -eq 0 ]]; then
+    echo -e "${GREEN}✅ Verificação pós-instalação: TUDO OK (${_SMOKE_PASS}/${_SMOKE_TOTAL} checks)${NC}"
+else
+    echo -e "${YELLOW}⚠️  Verificação pós-instalação: ${_SMOKE_PASS}/${_SMOKE_TOTAL} OK — ${_SMOKE_FAIL} ponto(s) de atenção acima${NC}"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
