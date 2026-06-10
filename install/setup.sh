@@ -184,6 +184,23 @@ UNIT
     return 0
 }
 
+# Handshake VPS↔painel: valida que o PANEL_TOKEN é aceito pelo painel apontado por
+# PANEL_BASE_URL — SEM efeito colateral (GET que só checa o token: 401 = não bate;
+# qualquer outra resposta = token aceito). Garante que URL e token são do MESMO
+# painel. Retorno: 0 = aceito; 1 = 401 (não bate); 2 = não deu pra validar.
+_verify_panel_token() {
+    [[ -n "${PANEL_BASE_URL:-}" && -n "${PANEL_TOKEN:-}" ]] || return 2
+    local code
+    code=$(curl -s -m 15 -o /dev/null -w "%{http_code}" \
+        "${PANEL_BASE_URL}/chat-pending-lookup" \
+        -H "X-Panel-Token: ${PANEL_TOKEN}" 2>/dev/null || echo "000")
+    case "$code" in
+        401)         return 1 ;;
+        000|404|405) return 2 ;;
+        *)           return 0 ;;
+    esac
+}
+
 ask() {
     local var_name="$1" description="$2" default_val="${3:-}"
     if [[ -n "${!var_name:-}" ]]; then
@@ -509,32 +526,50 @@ else
 fi
 
 if [[ -n "${PANEL_TOKEN:-}" ]]; then
-    # Veio do painel (.install_env.sh): o painel já conhece esse token (guardado no
-    # DB / secret), então NÃO há nada pra configurar à mão — instalação ponta-a-ponta.
-    ok "PANEL_TOKEN recebido do painel — sem configuração manual."
+    # Veio do painel (.install_env.sh): token e URL co-injetados pelo MESMO painel
+    # (PANEL_BASE_URL = origin de quem emitiu o token), então batem por construção.
+    ok "PANEL_TOKEN recebido do painel."
 else
-    # Instalação manual (curl direto, sem link do painel): geramos e o usuário
-    # precisa colar o token como secret pra VPS conseguir falar com o painel.
+    # Instalação manual (curl direto): geramos o token; o handshake abaixo EXIGE
+    # que ele seja cadastrado como secret no painel certo antes de prosseguir.
     PANEL_TOKEN=$(openssl rand -hex 32)
     ok "PANEL_TOKEN gerado."
-    echo ""
-    echo -e "${YELLOW}╔══════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${YELLOW}║  ⚠️  AÇÃO NECESSÁRIA — Configure o PANEL_TOKEN no Supabase  ║${NC}"
-    echo -e "${YELLOW}╚══════════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo "  1. Abra: ${PANEL_BASE_URL/functions\/v1/} → Settings → Edge Functions"
-    echo "  2. Clique em 'Add new secret'"
-    echo "  3. Name:  PANEL_TOKEN"
-    echo "  4. Value: ${PANEL_TOKEN}"
-    echo ""
-    echo -e "${YELLOW}  ⚠️  Sem esse secret, a VPS não consegue se comunicar com o painel.${NC}"
-    echo ""
-    if [[ -r /dev/tty ]]; then
-        read -rp "Pressione ENTER após configurar o secret no Supabase..." </dev/tty
-    else
-        warn "Sem terminal — garanta o secret PANEL_TOKEN no Supabase antes de continuar."
-    fi
 fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSO 4b: Handshake VPS↔painel — REQUISITO de instalação.
+# O PANEL_TOKEN da VPS PRECISA ser aceito pelo painel apontado por PANEL_BASE_URL
+# (a URL do front). Validamos AQUI, antes de instalar tudo, pra nunca terminar
+# numa instalação que não fala com o painel (e pra pegar token no painel errado).
+# ─────────────────────────────────────────────────────────────────────────────
+step "4b/13 — Validando conexão com o painel"
+
+_PANEL_HOST_URL="${PANEL_BASE_URL%/functions/v1}"
+while true; do
+    _verify_panel_token; _hs=$?
+    if [[ $_hs -eq 0 ]]; then
+        ok "Handshake OK — PANEL_TOKEN bate com o secret do painel (${_PANEL_HOST_URL})."
+        break
+    fi
+    echo ""
+    if [[ $_hs -eq 2 ]]; then
+        warn "Não consegui validar o handshake (painel inacessível em ${PANEL_BASE_URL})."
+    else
+        warn "O PANEL_TOKEN da VPS NÃO bate com o secret deste painel."
+    fi
+    echo -e "  ${YELLOW}Cadastre/atualize no painel DESTE endereço:${NC} ${_PANEL_HOST_URL}"
+    echo -e "  ${YELLOW}o secret${NC} PANEL_TOKEN ${YELLOW}com EXATAMENTE este valor:${NC}"
+    echo ""
+    echo "      ${PANEL_TOKEN}"
+    echo ""
+    echo "  (Supabase do painel → Edge Functions → Secrets → PANEL_TOKEN)"
+    echo ""
+    if [[ "${NONINTERACTIVE:-}" == "1" || ! -r /dev/tty ]]; then
+        warn "Seguindo mesmo assim — cfo-register-retry conecta sozinho quando o token bater."
+        break
+    fi
+    read -rp "Ajustou o secret? Tecle ENTER pra revalidar (Ctrl+C pra abortar)... " </dev/tty
+done
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PASSO 5: Gerar HOOKS_TOKEN
