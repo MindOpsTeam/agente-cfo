@@ -238,6 +238,26 @@ ask() {
     export "$var_name"="$value"
 }
 
+# Igual ao ask(), mas a variável é OPCIONAL: nunca aborta se faltar. Usado para
+# credenciais que o agente sincroniza do painel (Vault via cfo-credentials-sync)
+# ou que o cliente configura no painel depois (ex.: Omie). Sob NONINTERACTIVE ou
+# sem tty, segue com o valor que já houver (pode ser vazio).
+ask_optional() {
+    local var_name="$1" description="$2"
+    if [[ -n "${!var_name:-}" ]]; then
+        ok "$description: já definido."
+        return
+    fi
+    if [[ "${NONINTERACTIVE:-}" == "1" || ! -r /dev/tty ]]; then
+        export "$var_name"=""
+        info "$description: não informado — pode configurar no painel depois."
+        return
+    fi
+    local value=""
+    read -rp "$(echo -e "${CYAN}?${NC} ${description} (opcional, ENTER pula): ")" value </dev/tty
+    export "$var_name"="$value"
+}
+
 step() {
     echo ""
     echo -e "${CYAN}══════════════════════════════════════════════════${NC}"
@@ -452,19 +472,23 @@ export OPENCLAW_NO_RESPAWN=1
 # ─────────────────────────────────────────────────────────────────────────────
 step "3/13 — Credenciais"
 
-# Credenciais do ERP Omie só são pedidas quando o ERP é Omie. Para outros ERPs as
-# credenciais sincronizam do painel (Vault) via credentials-sync — não trava aqui.
+# Credenciais de ERP/cobrança são OPCIONAIS no install: o agente as sincroniza do
+# painel (Vault via cfo-credentials-sync) ou o cliente configura no painel depois.
+# Só a Anthropic é obrigatória (é o cérebro do Marcos). WhatsApp também é opcional
+# (pode ser detectado no pareamento — PASSO 7b — ou definido no painel).
 if [[ "${CFO_ERP_NAME:-omie}" == "omie" ]]; then
-    ask "OMIE_APP_KEY"      "Omie App Key"
-    ask "OMIE_APP_SECRET"   "Omie App Secret"
+    ask_optional "OMIE_APP_KEY"    "Omie App Key"
+    ask_optional "OMIE_APP_SECRET" "Omie App Secret"
 fi
-ask "CFO_WHATSAPP_TO"   "WhatsApp destino dos alertas (ex: +5511999999999)"
+ask_optional "CFO_WHATSAPP_TO"  "WhatsApp destino dos alertas (ex: +5511999999999)"
 ask "ANTHROPIC_API_KEY" "Anthropic API Key (sk-ant-...)"
 ask "LLM_BUDGET_BRL"    "Orçamento mensal LLM em BRL" "50"
 
 [[ "$ANTHROPIC_API_KEY" == sk-ant-* ]] || \
     warn "ANTHROPIC_API_KEY não parece uma chave Anthropic. Continuando."
-[[ "$CFO_WHATSAPP_TO" =~ ^\+[0-9]{10,15}$ ]] || \
+[[ -z "${CFO_WHATSAPP_TO:-}" ]] && \
+    info "WhatsApp não informado — alertas podem ser configurados no painel/pareamento depois."
+[[ -n "${CFO_WHATSAPP_TO:-}" && ! "$CFO_WHATSAPP_TO" =~ ^\+[0-9]{10,15}$ ]] && \
     warn "CFO_WHATSAPP_TO '$CFO_WHATSAPP_TO' — verifique o formato E.164."
 
 # ─────────────────────────────────────────────────────────────────────────────
