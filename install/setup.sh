@@ -527,7 +527,7 @@ ask_choice() {
     export "$var_name"="${_choice:-$default}"
 }
 
-ask_choice "CFO_ERP_NAME"       "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo / contaazul" "omie"
+ask_choice "CFO_ERP_NAME"       "Qual ERP voce usa?" "omie / bling / tiny / granatum / vhsys / nibo / contaazul / holdprint" "omie"
 ask_choice "CFO_CRM_NAME"       "Quer conectar um CRM?" "hubspot / rd-station / piperun / pipedrive / kommo / nenhum" "nenhum"
 ask_choice "CFO_COBRANCA_NAME"  "Plataforma de cobranca?" "asaas / iugu / nenhum" "nenhum"
 ask_choice "CFO_ECOMMERCE_NAME" "Plataforma de e-commerce?" "mercado-livre / nuvemshop / nenhum" "nenhum"

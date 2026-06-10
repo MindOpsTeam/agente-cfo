@@ -1,0 +1,12 @@
+{
+  "slug": "holdprint",
+  "version": "1.0.0",
+  "author": "MindOpsTeam",
+  "repo": "https://github.com/MindOpsTeam/agente-cfo",
+  "kind": "erp",
+  "auth": "api_key",
+  "secrets": ["HOLDPRINT_API_KEY"],
+  "base_url": "https://api.holdworks.ai",
+  "docs": "https://docs.holdworks.ai",
+  "sandbox": false
+}
