@@ -127,8 +127,10 @@ while IFS= read -r skill; do
     fi
 done <<< "$mcp_names"
 
-# Se nenhuma integração encontrada
-if [[ ${#seen[@]} -eq 0 ]]; then
+# Se nenhuma integração encontrada. Usa ${seen[*]+x} (forma "alternate value") em
+# vez de ${#seen[@]}: num array associativo VAZIO sob `set -u`, ${#seen[@]} dispara
+# "seen: unbound variable"; o +x é seguro mesmo sem nenhum elemento.
+if [[ -z "${seen[*]+x}" ]]; then
     echo "  (nenhuma integração encontrada — adicione credenciais no painel)"
 fi
 
