@@ -39,7 +39,7 @@ _panel_heartbeat() {
     body="${body},\"system_prompt\":${sp_json}}"
 
     local resp http_code
-    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -X POST "${PANEL_BASE_URL}/heartbeat" \
+    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -L --post301 --post302 -X POST "${PANEL_BASE_URL}/heartbeat" \
         -H "Content-Type: application/json" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" \
         -d "$body" 2>>"$LOG_DIR/panel.log" || echo -e "\n000")

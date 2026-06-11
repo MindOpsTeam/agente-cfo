@@ -45,7 +45,7 @@ _panel_event() {
 
     # Bug 10b: log HTTP != 2xx em panel.log em vez de suprimir silenciosamente
     local resp http_code
-    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -X POST "${PANEL_BASE_URL}/event" \
+    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -L --post301 --post302 -X POST "${PANEL_BASE_URL}/event" \
         -H "Content-Type: application/json" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" \
         -d "$body" 2>>"$LOG_DIR/panel.log" || echo -e "\n000")
@@ -78,7 +78,7 @@ _panel_llm_usage() {
 
     # Bug 10b: log falhas em vez de suprimir
     local resp http_code
-    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -X POST "${PANEL_BASE_URL}/llm-usage" \
+    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -L --post301 --post302 -X POST "${PANEL_BASE_URL}/llm-usage" \
         -H "Content-Type: application/json" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" \
         -d "$body" 2>>"$LOG_DIR/panel.log" || echo -e "\n000")
@@ -106,7 +106,7 @@ _panel_heartbeat() {
 
     # Bug 10b: log falhas
     local resp http_code
-    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -X POST "${PANEL_BASE_URL}/heartbeat" \
+    resp=$(curl -s -w "\n%{http_code}" --max-time 10 -L --post301 --post302 -X POST "${PANEL_BASE_URL}/heartbeat" \
         -H "Content-Type: application/json" \
         -H "X-Panel-Token: ${PANEL_TOKEN}" \
         -d "$body" 2>>"$LOG_DIR/panel.log" || echo -e "\n000")
