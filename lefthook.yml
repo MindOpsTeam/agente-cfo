@@ -1,0 +1,23 @@
+# Lefthook — hooks de git versionados (SOTA 2026)
+# Instale por repo:  lefthook install
+# Ou globalmente via core.hooksPath (ver setup-mac.sh).
+#
+# gitleaks roda com PATH mínimo dentro do hook -> usamos caminho absoluto se preciso.
+pre-commit:
+  parallel: true
+  commands:
+    gitleaks:
+      # Bloqueia segredos ANTES do commit (regex + entropia, +100 padrões)
+      run: gitleaks protect --staged --redact --verbose --no-banner
+    trailing-whitespace:
+      glob: "*.{js,ts,tsx,jsx,py,go,rs,md,json,yml,yaml}"
+      run: |
+        for f in {staged_files}; do
+          if grep -nEq ' +$' "$f"; then echo "espaço no fim: $f"; exit 1; fi
+        done
+
+pre-push:
+  commands:
+    gitleaks-full:
+      # Varredura completa do histórico antes de publicar
+      run: gitleaks detect --redact --no-banner
